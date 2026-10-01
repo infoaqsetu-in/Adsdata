@@ -629,6 +629,9 @@ const state = {
   loggedIn: false,
   page: "Dashboard",
   role: "client",
+  adminOverview: null,
+  adminLoading: false,
+  adminError: null,
   leadStatus: "All Leads",
   user: null,
   client: null,
@@ -644,7 +647,7 @@ const state = {
   }
 };
 
-const pages = [
+const clientPages = [
   "Dashboard",
   "Campaigns",
   "Leads",
@@ -654,9 +657,15 @@ const pages = [
   "Reports",
   "Notifications",
   "Profile"
-];
+ ];
+
+const adminPages = ["Admin Overview","Clients","Users","Integrations","Profile"];
 
 const icons = {
+  "Admin Overview":"⌂",
+  "Clients":"▦",
+  "Users":"♙",
+  "Integrations":"◈",
   "Dashboard":"⌂",
   "Campaigns":"◈",
   "Leads":"♙",
@@ -893,6 +902,14 @@ async function loadClient(){
     return;
   }
 
+  if(state.user?.role === "admin"){
+    state.client = null;
+    await loadAdminOverview();
+    state.loggedIn = true;
+    render();
+    return;
+  }
+
   try{
 
     const response = await fetch(
@@ -942,6 +959,19 @@ async function loadClient(){
   }
 
 }
+async function loadAdminOverview(){
+  state.adminLoading = true;
+  state.adminError = null;
+  try{
+    state.adminOverview = await apiRequest("/api/admin/overview");
+  }catch(error){
+    console.error("Admin overview error:", error);
+    state.adminError = error.message || "Unable to load admin data.";
+  }finally{
+    state.adminLoading = false;
+  }
+}
+
 async function loadDashboard() {
 
   state.dashboardLoading = true;
@@ -1256,7 +1286,7 @@ function layout(){
 
         <div class="nav">
 
-          ${pages.map(page => `
+          ${(state.user?.role === "admin" ? adminPages : clientPages).map(page => `
 
             <button
               class="${state.page === page ? "active" : ""}"
@@ -1353,6 +1383,10 @@ function go(page){
 
 function pageContent(){
 
+  if(state.user?.role === "admin"){
+    return adminOverview();
+  }
+
   switch(state.page){
 
     case "Dashboard":
@@ -1421,6 +1455,35 @@ function title(
 /* =========================================================
    DASHBOARD
    ========================================================= */
+
+function adminOverview(){
+  const o = state.adminOverview;
+  const clients = o?.clients || [];
+  const users = o?.users || [];
+  const spend = clients.reduce((n,c)=>n+Number(c.spend||0),0);
+  const leads = clients.reduce((n,c)=>n+Number(c.leads||0),0);
+
+  if(state.adminLoading && !o) return title("Agency Admin","Loading clients and users.") + '<div class="card empty">Loading agency data…</div>';
+  if(state.adminError) return title("Agency Admin","Agency-wide management.") + '<div class="card"><div class="error-message">'+esc(state.adminError)+'</div></div>';
+
+  return title("Agency Admin","Manage all AQ Setu clients and users.")
+    + '<div class="grid kpi-grid">'
+    + '<div class="card kpi"><div class="label">Clients</div><div class="value">'+fmtNum(clients.length)+'</div></div>'
+    + '<div class="card kpi"><div class="label">Client Users</div><div class="value">'+fmtNum(users.filter(u=>u.role!=="admin").length)+'</div></div>'
+    + '<div class="card kpi"><div class="label">Ad Spend</div><div class="value">'+fmtMoney(spend)+'</div></div>'
+    + '<div class="card kpi"><div class="label">Leads</div><div class="value">'+fmtNum(leads)+'</div></div>'
+    + '</div><div style="height:16px"></div>'
+    + '<div class="card"><div class="section-head"><h3>Clients</h3><span class="badge purple">Agency view</span></div>'
+    + (clients.length ? '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Client</th><th>Code</th><th>Users</th><th>Spend</th><th>Clicks</th><th>Leads</th><th>Status</th></tr></thead><tbody>'
+      + clients.map(c=>'<tr><td><b>'+esc(c.display_name)+'</b><div class="muted">'+esc(c.company_name)+'</div></td><td>'+esc(c.client_code)+'</td><td>'+fmtNum(c.userCount)+'</td><td>'+fmtMoney(c.spend)+'</td><td>'+fmtNum(c.clicks)+'</td><td>'+fmtNum(c.leads)+'</td><td>'+esc(c.status)+'</td></tr>').join('')
+      + '</tbody></table></div>' : '<div class="empty">No clients found.</div>')
+    + '</div><div style="height:16px"></div>'
+    + '<div class="card"><div class="section-head"><h3>Users</h3><span class="badge green">'+fmtNum(users.length)+' total</span></div>'
+    + (users.length ? '<table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Client</th><th>Status</th></tr></thead><tbody>'
+      + users.map(u=>'<tr><td>'+esc(u.name)+'</td><td>'+esc(u.email)+'</td><td>'+esc(u.role)+'</td><td>'+esc(clients.find(c=>c.id===u.client_id)?.display_name || "Agency")+'</td><td>'+esc(u.status)+'</td></tr>').join('')
+      + '</tbody></table>' : '<div class="empty">No users found.</div>')
+    + '</div>';
+}
 
 function dashboard(){
 
