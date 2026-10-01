@@ -2626,6 +2626,37 @@ function notifications(){
    PROFILE
    ========================================================= */
 
+async function openProfileSettings(){
+  const u=state.user||{};
+  const name=prompt('Account name:',u.name||''); if(name===null)return;
+  const email=prompt('Email address:',u.email||''); if(email===null)return;
+  try{
+    const d=await apiRequest('/api/auth/profile',{method:'PATCH',body:JSON.stringify({name:name.trim(),email:email.trim()})});
+    state.user={...(state.user||{}),...d.user};
+    localStorage.setItem('aqsetu_user',JSON.stringify(state.user));
+    render(); alert('Account settings updated.');
+  }catch(e){alert(e.message);}
+}
+
+function openNotificationSettings(){
+  const enabled=localStorage.getItem('aqsetu_notifications')==='true';
+  if(confirm(enabled?'Notifications are ON. Turn them OFF?':'Notifications are OFF. Turn them ON?')){
+    localStorage.setItem('aqsetu_notifications',String(!enabled));
+    alert('Notification setting updated.');
+  }
+}
+
+async function openChangePassword(){
+  const currentPassword=prompt('Current password:'); if(currentPassword===null)return;
+  const newPassword=prompt('New password (minimum 8 characters):'); if(newPassword===null)return;
+  const confirmPassword=prompt('Confirm new password:'); if(confirmPassword===null)return;
+  if(newPassword.length<8){alert('New password must be at least 8 characters.');return;}
+  if(newPassword!==confirmPassword){alert('New passwords do not match.');return;}
+  try{
+    await apiRequest('/api/auth/password',{method:'POST',body:JSON.stringify({currentPassword,newPassword})});
+    alert('Password changed successfully.');
+  }catch(e){alert(e.message);}
+}
 function profile(){
 
   const user =
@@ -2703,7 +2734,7 @@ function profile(){
         <div
           class="list-item"
           style="cursor:pointer"
-          onclick="${settingsAction}"
+          onclick="openProfileSettings()"
         >
           <b>Account Settings</b>
           <span>›</span>
@@ -2712,7 +2743,7 @@ function profile(){
         <div
           class="list-item"
           style="cursor:pointer"
-          onclick="${usersAction}"
+          onclick="go('Users')"
         >
           <b>Users & Permissions</b>
           <span>›</span>
@@ -2721,7 +2752,7 @@ function profile(){
         <div
           class="list-item"
           style="cursor:pointer"
-          onclick="${accountsAction}"
+          onclick="go('Integrations')"
         >
           <b>Connected Accounts</b>
           <span>›</span>
@@ -2730,7 +2761,7 @@ function profile(){
         <div
           class="list-item"
           style="cursor:pointer"
-          onclick="alert('Notification settings will be connected here next.')"
+          onclick="openNotificationSettings()"
         >
           <b>Notification Settings</b>
           <span>›</span>
@@ -2739,7 +2770,7 @@ function profile(){
         <div
           class="list-item"
           style="cursor:pointer"
-          onclick="alert('Password management will be connected here next.')"
+          onclick="openChangePassword()"
         >
           <b>Change Password</b>
           <span>›</span>
