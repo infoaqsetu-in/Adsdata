@@ -632,6 +632,7 @@ const state = {
   adminOverview: null,
   adminLoading: false,
   adminError: null,
+  adminIntegrations: null,
   leadStatus: "All Leads",
   user: null,
   client: null,
@@ -971,6 +972,25 @@ async function loadAdminOverview(){
     state.adminLoading = false;
   }
 }
+
+async function loadAdminIntegrations(){
+  try{ state.adminIntegrations = await apiRequest("/api/admin/integrations"); }
+  catch(error){ state.adminIntegrations = {success:false,integrations:[],error:error.message}; }
+}
+async function adminRefresh(){ await loadAdminOverview(); if(state.page === "Integrations") await loadAdminIntegrations(); render(); }
+async function createAdminClient(){
+  const clientCode=prompt("Client code (e.g. ABC-001):"), companyName=prompt("Company name:"), displayName=prompt("Display name:");
+  if(!clientCode||!companyName||!displayName)return;
+  try{await apiRequest("/api/admin/clients",{method:"POST",body:JSON.stringify({clientCode,companyName,displayName})});await adminRefresh();}catch(e){alert(e.message);}
+}
+async function toggleAdminClient(id,current){try{await apiRequest("/api/admin/clients/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status:current==="active"?"inactive":"active"})});await adminRefresh();}catch(e){alert(e.message);}}
+async function createAdminUser(){
+  const clients=state.adminOverview?.clients||[]; if(!clients.length){alert("Create a client first.");return;}
+  const pick=Number(prompt("Choose client:\n\n"+clients.map((x,i)=>i+1+". "+x.display_name+" ("+x.client_code+")").join("\n"))); const client=clients[pick-1]; if(!client)return;
+  const name=prompt("User name:"),email=prompt("User email:"),password=prompt("Temporary password (8+ characters):"); if(!name||!email||!password)return;
+  try{await apiRequest("/api/admin/users",{method:"POST",body:JSON.stringify({clientId:client.id,name,email,password})});await adminRefresh();}catch(e){alert(e.message);}
+}
+async function toggleAdminUser(id,current){try{await apiRequest("/api/admin/users/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status:current==="active"?"inactive":"active"})});await adminRefresh();}catch(e){alert(e.message);}}
 
 async function loadDashboard() {
 
@@ -1333,7 +1353,7 @@ function layout(){
           <div class="user">
 
             <span style="font-size:13px">
-              ${companyName}
+              ${state.user?.role === "admin" ? "Agency Administration" : companyName}
             </span>
 
             <div class="avatar">
@@ -1384,7 +1404,14 @@ function go(page){
 function pageContent(){
 
   if(state.user?.role === "admin"){
-    return adminOverview();
+    switch(state.page){
+      case "Admin Overview": return adminOverview();
+      case "Clients": return adminClients();
+      case "Users": return adminUsers();
+      case "Integrations": return adminIntegrations();
+      case "Profile": return profile();
+      default: return adminOverview();
+    }
   }
 
   switch(state.page){
@@ -1483,6 +1510,30 @@ function adminOverview(){
       + users.map(u=>'<tr><td>'+esc(u.name)+'</td><td>'+esc(u.email)+'</td><td>'+esc(u.role)+'</td><td>'+esc(clients.find(c=>c.id===u.client_id)?.display_name || "Agency")+'</td><td>'+esc(u.status)+'</td></tr>').join('')
       + '</tbody></table>' : '<div class="empty">No users found.</div>')
     + '</div>';
+}
+
+function adminClients(){
+  const clients=state.adminOverview?.clients||[];
+  return title("Clients","Create and manage every client account.",'<button class="btn btn-primary" onclick="createAdminClient()">+ Add Client</button>')
+    + '<div class="card"><div style="overflow-x:auto"><table class="table"><thead><tr><th>Client</th><th>Code</th><th>Website</th><th>Users</th><th>Status</th><th></th></tr></thead><tbody>'
+    + clients.map(c=>'<tr><td><b>'+esc(c.display_name)+'</b><div class="muted">'+esc(c.company_name)+'</div></td><td>'+esc(c.client_code)+'</td><td>'+esc(c.website||"—")+'</td><td>'+fmtNum(c.userCount)+'</td><td>'+esc(c.status)+'</td><td><button class="btn btn-light" onclick="toggleAdminClient(\''+c.id+'\',\''+c.status+'\')">'+(c.status==="active"?"Deactivate":"Activate")+'</button></td></tr>').join('')
+    + '</tbody></table></div></div>';
+}
+function adminUsers(){
+  const users=state.adminOverview?.users||[],clients=state.adminOverview?.clients||[];
+  return title("Users","Create and manage client portal users.",'<button class="btn btn-primary" onclick="createAdminUser()">+ Add User</button>')
+    + '<div class="card"><div style="overflow-x:auto"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Client</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>'
+    + users.map(u=>'<tr><td>'+esc(u.name)+'</td><td>'+esc(u.email)+'</td><td>'+esc(clients.find(c=>c.id===u.client_id)?.display_name||"Agency")+'</td><td>'+esc(u.role)+'</td><td>'+esc(u.status)+'</td><td>'+(u.role==="admin"?"":'<button class="btn btn-light" onclick="toggleAdminUser(\''+u.id+'\',\''+u.status+'\')">'+(u.status==="active"?"Deactivate":"Activate")+'</button>')+'</td></tr>').join('')
+    + '</tbody></table></div></div>';
+}
+function adminIntegrations(){
+  const rows=state.adminIntegrations?.integrations||[];
+  if(!state.adminIntegrations) loadAdminIntegrations().then(render);
+  return title("Integrations","See connection status across all clients.")
+    + '<div class="card"><div style="overflow-x:auto"><table class="table"><thead><tr><th>Client</th><th>Meta account</th><th>Status</th><th>Last synced</th><th>Token expiry</th></tr></thead><tbody>'
+    + rows.map(r=>'<tr><td><b>'+esc((state.adminOverview?.clients||[]).find(c=>c.id===r.client_id)?.display_name||r.client_id)+'</b></td><td>'+esc(r.ad_account_name||r.ad_account_id||"—")+'</td><td>'+esc(r.status||"—")+'</td><td>'+esc(r.last_synced_at?new Date(r.last_synced_at).toLocaleString("en-IN"):"Never")+'</td><td>'+esc(r.token_expires_at?new Date(r.token_expires_at).toLocaleDateString("en-IN"):"—")+'</td></tr>').join('')
+    + (rows.length?"":"<tr><td colspan=\"5\" class=\"muted\">No Meta connections yet.</td></tr>")
+    + '</tbody></table></div></div>';
 }
 
 function dashboard(){
