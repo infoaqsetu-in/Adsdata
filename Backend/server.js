@@ -44,7 +44,7 @@ app.get("/logo.jpg", (req, res) =>
 
 const authRoutes = require("./routes/auth");
 
-app.use("/api/auth", authRoutes(supabase));
+app.use("/api/auth", authRoutes(supabase, authenticateToken));
 const campaignRoutes = require("./routes/campaigns");
 const leadRoutes = require("./routes/leads");
 const dashboardRoutes = require("./routes/dashboard");
@@ -69,6 +69,10 @@ app.use(
 app.use(
   "/api/meta",
   metaRoutes(supabase, authenticateToken)
+);
+app.use(
+  "/api/admin",
+  adminRoutes(supabase, authenticateToken)
 );
 // ======================================================
 // Health Check
