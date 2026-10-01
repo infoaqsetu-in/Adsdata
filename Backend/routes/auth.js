@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 
 const router = express.Router();
 
-module.exports = (supabase) => {
+module.exports = (supabase, authenticateToken) => {
   router.post("/login", async (req, res) => {
     try {
       const { email, password } = req.body;
@@ -44,6 +44,51 @@ module.exports = (supabase) => {
     } catch(error) {
       console.error("Login error:", error);
       res.status(500).json({ success:false, message:"Server error" });
+    }
+  });
+
+  router.patch("/profile", authenticateToken, async (req, res) => {
+    try {
+      const { name, email } = req.body;
+      if (!name || !email) return res.status(400).json({ success:false, message:"Name and email are required" });
+
+      const normalizedEmail = email.toLowerCase().trim();
+      const { data:existing } = await supabase.from("users").select("id").eq("email", normalizedEmail).neq("id", req.user.userId).maybeSingle();
+      if (existing) return res.status(409).json({ success:false, message:"That email is already in use" });
+
+      const { data:user, error } = await supabase.from("users").update({
+        name: name.trim(),
+        email: normalizedEmail
+      }).eq("id", req.user.userId).select("id,name,email,role").single();
+
+      if (error) throw error;
+      res.json({ success:true, user });
+    } catch(error) {
+      console.error("Profile update error:", error);
+      res.status(500).json({ success:false, message:"Unable to update profile" });
+    }
+  });
+
+  router.post("/password", authenticateToken, async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) return res.status(400).json({ success:false, message:"Current and new passwords are required" });
+      if (newPassword.length < 8) return res.status(400).json({ success:false, message:"New password must be at least 8 characters" });
+
+      const { data:user, error } = await supabase.from("users").select("password_hash").eq("id", req.user.userId).single();
+      if (error || !user) return res.status(404).json({ success:false, message:"User not found" });
+
+      const valid = await bcrypt.compare(currentPassword, user.password_hash || "");
+      if (!valid) return res.status(401).json({ success:false, message:"Current password is incorrect" });
+
+      const password_hash = await bcrypt.hash(newPassword, 12);
+      const { error:updateError } = await supabase.from("users").update({ password_hash }).eq("id", req.user.userId);
+      if (updateError) throw updateError;
+
+      res.json({ success:true, message:"Password changed successfully" });
+    } catch(error) {
+      console.error("Password change error:", error);
+      res.status(500).json({ success:false, message:"Unable to change password" });
     }
   });
 
