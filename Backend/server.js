@@ -49,6 +49,7 @@ const campaignRoutes = require("./routes/campaigns");
 const leadRoutes = require("./routes/leads");
 const dashboardRoutes = require("./routes/dashboard");
 const metaRoutes = require("./routes/meta");
+const adminRoutes = require("./routes/admin");
 
 
 app.use(
