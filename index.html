@@ -737,8 +737,7 @@ function login(){
           <input
             id="email"
             type="email"
-            value="admin@aqsetu.in"
-            placeholder="Email address"
+placeholder="Email address"
             autocomplete="username"
           >
 
@@ -751,8 +750,7 @@ function login(){
           <input
             id="password"
             type="password"
-            value="Demo@12345"
-            placeholder="Password"
+placeholder="Password"
             autocomplete="current-password"
           >
 
@@ -894,25 +892,6 @@ async function doLogin(){
     }
 
   }
-}
-
-
-/* =========================================================
-   DEMO LOGIN
-   ========================================================= */
-
-async function demoLogin(){
-
-  const email =
-    "admin@aqsetu.in";
-
-  const password =
-    "Demo@12345";
-
-  document.getElementById("email").value = email;
-  document.getElementById("password").value = password;
-
-  await doLogin();
 }
 
 
