@@ -476,6 +476,34 @@ button,input,select{font:inherit}
   display:none!important
 }
 
+.modal-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(20,24,30,.45);
+  display:grid;
+  place-items:center;
+  z-index:100;
+}
+.modal{
+  width:min(520px,92vw);
+  background:#fff;
+  border-radius:16px;
+  padding:24px;
+  box-shadow:0 20px 60px rgba(0,0,0,.18);
+}
+.modal-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:18px;
+}
+.modal-head h2{margin:0;font-size:20px}
+.modal-close{
+  border:0;background:transparent;font-size:24px;cursor:pointer;color:var(--muted);
+}
+.modal-actions{
+  display:flex;justify-content:flex-end;gap:10px;margin-top:20px;
+}
 .error-message{
   color:var(--red);
   background:#fff0f0;
@@ -984,11 +1012,65 @@ async function createAdminClient(){
   try{await apiRequest("/api/admin/clients",{method:"POST",body:JSON.stringify({clientCode,companyName,displayName})});await adminRefresh();}catch(e){alert(e.message);}
 }
 async function toggleAdminClient(id,current){try{await apiRequest("/api/admin/clients/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status:current==="active"?"inactive":"active"})});await adminRefresh();}catch(e){alert(e.message);}}
-async function createAdminUser(){
-  const clients=state.adminOverview?.clients||[]; if(!clients.length){alert("Create a client first.");return;}
-  const pick=Number(prompt("Choose client:\n\n"+clients.map((x,i)=>i+1+". "+x.display_name+" ("+x.client_code+")").join("\n"))); const client=clients[pick-1]; if(!client)return;
-  const name=prompt("User name:"),email=prompt("User email:"),password=prompt("Temporary password (8+ characters):"); if(!name||!email||!password)return;
-  try{await apiRequest("/api/admin/users",{method:"POST",body:JSON.stringify({clientId:client.id,name,email,password})});await adminRefresh();}catch(e){alert(e.message);}
+function openAddUserModal(){
+  const clients=state.adminOverview?.clients||[];
+  if(!clients.length){alert("Create a client first.");return;}
+  const existing=document.getElementById("add-user-modal");
+  if(existing) existing.remove();
+  document.body.insertAdjacentHTML("beforeend",`
+    <div id="add-user-modal" class="modal-backdrop" onclick="if(event.target===this) closeAddUserModal()">
+      <div class="modal">
+        <div class="modal-head">
+          <h2>Add Client User</h2>
+          <button class="modal-close" type="button" onclick="closeAddUserModal()">×</button>
+        </div>
+        <div class="field">
+          <label>Client</label>
+          <select id="new-user-client" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:9px">
+            ${clients.map(x=>`<option value="${esc(x.id)}">${esc(x.display_name)} (${esc(x.client_code)})</option>`).join("")}
+          </select>
+        </div>
+        <div class="field">
+          <label>User name</label>
+          <input id="new-user-name" type="text" placeholder="e.g. Rahul Sharma">
+        </div>
+        <div class="field">
+          <label>Email address</label>
+          <input id="new-user-email" type="email" placeholder="e.g. rahul@company.com">
+        </div>
+        <div class="field">
+          <label>Temporary password</label>
+          <input id="new-user-password" type="password" minlength="8" placeholder="Minimum 8 characters">
+        </div>
+        <div id="new-user-error" class="error-message hidden"></div>
+        <div class="modal-actions">
+          <button class="btn btn-light" type="button" onclick="closeAddUserModal()">Cancel</button>
+          <button class="btn btn-primary" type="button" onclick="submitAdminUser()">Create User</button>
+        </div>
+      </div>
+    </div>
+  `);
+  document.getElementById("new-user-name").focus();
+}
+function closeAddUserModal(){
+  document.getElementById("add-user-modal")?.remove();
+}
+async function submitAdminUser(){
+  const clientId=document.getElementById("new-user-client")?.value;
+  const name=document.getElementById("new-user-name")?.value.trim();
+  const email=document.getElementById("new-user-email")?.value.trim();
+  const password=document.getElementById("new-user-password")?.value;
+  const error=document.getElementById("new-user-error");
+  if(!clientId||!name||!email||!password){error.textContent="Please fill in all fields.";error.classList.remove("hidden");return;}
+  if(password.length<8){error.textContent="Password must be at least 8 characters.";error.classList.remove("hidden");return;}
+  try{
+    await apiRequest("/api/admin/users",{method:"POST",body:JSON.stringify({clientId,name,email,password})});
+    closeAddUserModal();
+    await adminRefresh();
+  }catch(e){
+    error.textContent=e.message||"Unable to create user.";
+    error.classList.remove("hidden");
+  }
 }
 async function toggleAdminUser(id,current){try{await apiRequest("/api/admin/users/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status:current==="active"?"inactive":"active"})});await adminRefresh();}catch(e){alert(e.message);}}
 
@@ -1521,7 +1603,7 @@ function adminClients(){
 }
 function adminUsers(){
   const users=state.adminOverview?.users||[],clients=state.adminOverview?.clients||[];
-  return title("Users","Create and manage client portal users.",'<button class="btn btn-primary" onclick="createAdminUser()">+ Add User</button>')
+  return title("Users","Create and manage client portal users.",'<button class="btn btn-primary" onclick="openAddUserModal()">+ Add User</button>')
     + '<div class="card"><div style="overflow-x:auto"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Client</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>'
     + users.map(u=>'<tr><td>'+esc(u.name)+'</td><td>'+esc(u.email)+'</td><td>'+esc(clients.find(c=>c.id===u.client_id)?.display_name||"Agency")+'</td><td>'+esc(u.role)+'</td><td>'+esc(u.status)+'</td><td>'+(u.role==="admin"?"":'<button class="btn btn-light" onclick="toggleAdminUser(\''+u.id+'\',\''+u.status+'\')">'+(u.status==="active"?"Deactivate":"Activate")+'</button>')+'</td></tr>').join('')
     + '</tbody></table></div></div>';
