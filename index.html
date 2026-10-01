@@ -2634,6 +2634,27 @@ function profile(){
   const client =
     state.client || {};
 
+  const isAdmin =
+    user.role === "admin" || user.role === "client_admin";
+
+  const roleLabel =
+    isAdmin ? "Agency Admin" : (user.role || "Client User");
+
+  const settingsAction =
+    isAdmin
+      ? "alert('Account settings will be connected here next.')"
+      : "alert('Your account settings are managed by AQ Setu.')";
+
+  const usersAction =
+    isAdmin
+      ? "go('Users')"
+      : "alert('User and permission changes are managed by AQ Setu.')";
+
+  const accountsAction =
+    isAdmin
+      ? "go('Integrations')"
+      : "alert('Connected accounts are managed by AQ Setu.')";
+
   return title(
     "Profile & Settings",
     "Manage your AQ Setu client account."
@@ -2664,7 +2685,7 @@ function profile(){
           <div class="muted">
             ${user.email || "admin@aqsetu.in"}
             ·
-            ${user.role || "Client Admin"}
+            ${roleLabel}
           </div>
 
         </div>
@@ -2679,27 +2700,47 @@ function profile(){
 
       <div class="list">
 
-        <div class="list-item">
+        <div
+          class="list-item"
+          style="cursor:pointer"
+          onclick="${settingsAction}"
+        >
           <b>Account Settings</b>
           <span>›</span>
         </div>
 
-        <div class="list-item">
+        <div
+          class="list-item"
+          style="cursor:pointer"
+          onclick="${usersAction}"
+        >
           <b>Users & Permissions</b>
           <span>›</span>
         </div>
 
-        <div class="list-item">
+        <div
+          class="list-item"
+          style="cursor:pointer"
+          onclick="${accountsAction}"
+        >
           <b>Connected Accounts</b>
           <span>›</span>
         </div>
 
-        <div class="list-item">
+        <div
+          class="list-item"
+          style="cursor:pointer"
+          onclick="alert('Notification settings will be connected here next.')"
+        >
           <b>Notification Settings</b>
           <span>›</span>
         </div>
 
-        <div class="list-item">
+        <div
+          class="list-item"
+          style="cursor:pointer"
+          onclick="alert('Password management will be connected here next.')"
+        >
           <b>Change Password</b>
           <span>›</span>
         </div>
