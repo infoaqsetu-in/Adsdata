@@ -34,6 +34,19 @@ module.exports = (supabase, authenticateToken) => {
     } catch(e){ console.error("Admin overview error:",e?.message||e); res.status(500).json({success:false,message:"Unable to load admin overview"}); }
   });
 
+  router.get("/integrations", async (req,res) => {
+    try {
+      const { data, error } = await supabase
+        .from("meta_connections")
+        .select("client_id, meta_user_id, ad_account_id, ad_account_name, currency, status, token_expires_at, last_synced_at, last_sync_error, updated_at");
+      if (error) throw error;
+      res.json({ success: true, integrations: data || [] });
+    } catch (e) {
+      console.error("Admin integrations error:", e?.message || e);
+      res.status(500).json({ success: false, message: "Unable to load integrations" });
+    }
+  });
+
   router.post("/clients", async (req,res)=>{
     try{
       const {clientCode,companyName,displayName,website,clientType="standard"}=req.body||{};
