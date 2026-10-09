@@ -65,11 +65,16 @@ module.exports = (supabase, authenticateToken) => {
       });
     } catch(error) {
       // Log the network failure reason without logging the Google credential.
-      console.error("Google sign-in error:", {
-        message: error?.message || String(error),
-        cause: error?.cause?.message || null,
-        code: error?.cause?.code || error?.code || null,
-        name: error?.name || null
+      console.error("Google sign-in error object:", error);
+      console.error("Google sign-in error diagnostics:", {
+        message: String(error),
+        stack: error?.stack || null,
+        causeString: error?.cause ? String(error.cause) : null,
+        causeStack: error?.cause?.stack || null,
+        causeCode: error?.cause?.code || null,
+        causeName: error?.cause?.name || null,
+        causeType: typeof error?.cause,
+        ownProperties: error && Object.getOwnPropertyNames(error)
       });
       return res.status(502).json({ success:false, message:"The server could not verify your Google sign-in with Google. Please retry; if this continues, check the backend logs." });
     }
