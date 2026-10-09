@@ -88,14 +88,23 @@ module.exports = (supabase, authenticateToken) => {
   }
 
   // ---------------- OAuth ----------------
-  router.get("/connect", authenticateToken, (req, res) => {
+  router.get("/connect", authenticateToken, async (req, res) => {
     if (!process.env.META_APP_ID || !process.env.META_REDIRECT_URI) {
       return fail(res, 500, "Meta app is not configured on the server");
     }
-    // Signed, short-lived state: the callback can only be completed for the
-    // client that started the flow. (Previously state was the raw clientId.)
+    const requestedClientId = typeof req.query.clientId === "string" ? req.query.clientId : null;
+    const clientId = req.user.role === "admin" ? requestedClientId : req.user.clientId;
+    if (!clientId) return fail(res, 400, "Select a client before connecting Meta");
+    if (req.user.role !== "admin" && requestedClientId && requestedClientId !== req.user.clientId) {
+      return fail(res, 403, "You can only connect Meta for your own client");
+    }
+    if (req.user.role === "admin") {
+      const { data: client, error } = await supabase.from("clients").select("id").eq("id", clientId).maybeSingle();
+      if (error) return fail(res, 500, "Unable to verify selected client");
+      if (!client) return fail(res, 404, "Selected client was not found");
+    }
     const state = jwt.sign(
-      { purpose: "meta_oauth", clientId: req.user.clientId, userId: req.user.userId, nonce: crypto.randomBytes(8).toString("hex") },
+      { purpose: "meta_oauth", clientId, userId: req.user.userId, role: req.user.role, nonce: crypto.randomBytes(8).toString("hex") },
       process.env.JWT_SECRET,
       { expiresIn: "10m" }
     );
@@ -170,16 +179,21 @@ module.exports = (supabase, authenticateToken) => {
     }
   });
 
-  // Admin-only: attach a Meta token (e.g. a System User token) to the caller's client.
+  // Admin-only: attach a Meta token to an explicitly selected client.
   router.post("/connect-token", authenticateToken, async (req, res) => {
     if (req.user.role !== "admin") return fail(res, 403, "Admin role required");
+    const clientId = req.body?.clientId;
+    if (typeof clientId !== "string" || !clientId) return fail(res, 400, "clientId is required");
     const token = req.body?.accessToken;
     if (typeof token !== "string" || token.length < 20) return fail(res, 400, "accessToken is required");
     try {
+      const { data: client, error } = await supabase.from("clients").select("id").eq("id", clientId).maybeSingle();
+      if (error) return fail(res, 500, "Unable to verify selected client");
+      if (!client) return fail(res, 404, "Selected client was not found");
       const me = await meta.getMe(token);
       const accounts = await meta.listAdAccounts(token);
       if (!accounts.length) return fail(res, 400, "That token has no accessible ad accounts");
-      const selected = await saveConnection(req.user.clientId, { metaUserId: me.id, token, accounts, keepAccountId: req.body?.adAccountId });
+      const selected = await saveConnection(clientId, { metaUserId: me.id, token, accounts, keepAccountId: req.body?.adAccountId });
       res.json({ success: true, adAccount: { id: selected.id, name: selected.name } });
     } catch (err) { await handleError(req, res, err, "connect-token"); }
   });
