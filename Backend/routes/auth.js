@@ -64,8 +64,14 @@ module.exports = (supabase, authenticateToken) => {
         user:{ id:user.id, name:user.name || claims.name || email, email:user.email, role, client:user.clients || null }
       });
     } catch(error) {
-      console.error("Google sign-in error:", error?.message || error);
-      return res.status(500).json({ success:false, message:"Unable to sign in with Google right now" });
+      // Log the network failure reason without logging the Google credential.
+      console.error("Google sign-in error:", {
+        message: error?.message || String(error),
+        cause: error?.cause?.message || null,
+        code: error?.cause?.code || error?.code || null,
+        name: error?.name || null
+      });
+      return res.status(502).json({ success:false, message:"The server could not verify your Google sign-in with Google. Please retry; if this continues, check the backend logs." });
     }
   });
 
