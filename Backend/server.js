@@ -29,7 +29,8 @@ const supabase = createClient(
 // ======================================================
 
 app.use(cors());
-app.use(express.json({ limit: "100kb" }));
+// CSV rows are sent as JSON during admin imports (up to 1,000 rows / 5 MB file).
+app.use(express.json({ limit: "8mb" }));
 
 // Serve frontend from aqsetu_app folder
 // Only the two public frontend files are served. (Serving the whole app folder
