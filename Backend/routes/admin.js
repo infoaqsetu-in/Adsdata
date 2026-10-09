@@ -34,6 +34,104 @@ module.exports = (supabase, authenticateToken) => {
     } catch(e){ console.error("Admin overview error:",e?.message||e); res.status(500).json({success:false,message:"Unable to load admin overview"}); }
   });
 
+  router.post("/import", async (req, res) => {
+    try {
+      const { clientId, dataType, rows } = req.body || {};
+      if (!clientId || !["campaigns", "leads"].includes(dataType) || !Array.isArray(rows)) {
+        return res.status(400).json({ success:false, message:"clientId, dataType (campaigns or leads), and rows are required" });
+      }
+      if (rows.length < 1) return res.status(400).json({ success:false, message:"The file contains no data rows" });
+      if (rows.length > 1000) return res.status(413).json({ success:false, message:"Import is limited to 1,000 rows per upload" });
+
+      const { data: client, error: clientError } = await supabase.from("clients").select("id").eq("id", clientId).maybeSingle();
+      if (clientError) throw clientError;
+      if (!client) return res.status(404).json({ success:false, message:"Selected client was not found" });
+
+      const numberOrNull = v => {
+        if (v === undefined || v === null || String(v).trim() === "") return null;
+        const n = Number(String(v).replace(/[,₹$%]/g, "").trim());
+        return Number.isFinite(n) && n >= 0 ? n : NaN;
+      };
+      const clean = v => v === undefined || v === null || String(v).trim() === "" ? null : String(v).trim();
+
+      if (dataType === "campaigns") {
+        const normalized = [];
+        for (let i=0; i<rows.length; i++) {
+          const r = rows[i] || {};
+          const campaignName = clean(r.campaign_name || r.campaignName || r.campaign);
+          const platform = (clean(r.platform) || "").toLowerCase();
+          if (!campaignName || !["meta", "google", "linkedin", "tiktok", "other"].includes(platform)) {
+            return res.status(400).json({success:false,message:`Row ${i+2}: campaign_name and a supported platform (meta, google, linkedin, tiktok, other) are required`});
+          }
+          const item = { client_id:clientId, campaign_name:campaignName, platform, status:clean(r.status)||"imported" };
+          for (const key of ["spend","impressions","clicks","leads","conversions","cpl","roas"]) {
+            const value = numberOrNull(r[key]);
+            if (Number.isNaN(value)) return res.status(400).json({success:false,message:`Row ${i+2}: ${key} must be a non-negative number`});
+            if (value !== null) item[key] = value;
+          }
+          for (const key of ["date_start","date_stop","currency"]) {
+            const value=clean(r[key]); if(value) item[key]=value;
+          }
+          if (item.date_start && !/^\d{4}-\d{2}-\d{2}$/.test(item.date_start)) return res.status(400).json({success:false,message:`Row ${i+2}: date_start must use YYYY-MM-DD`});
+          if (item.date_stop && !/^\d{4}-\d{2}-\d{2}$/.test(item.date_stop)) return res.status(400).json({success:false,message:`Row ${i+2}: date_stop must use YYYY-MM-DD`});
+          normalized.push(item);
+        }
+        const {data:existing,error:existingError}=await supabase.from("campaigns").select("campaign_name,platform,date_start").eq("client_id",clientId);
+        if(existingError) throw existingError;
+        const keys=new Set((existing||[]).map(x=>[x.platform,String(x.campaign_name||"").toLowerCase(),x.date_start||""].join("|")));
+        const fresh=[];
+        let skipped=0;
+        for(const row of normalized){
+          const key=[row.platform,row.campaign_name.toLowerCase(),row.date_start||""].join("|");
+          if(keys.has(key)){skipped++;continue;}
+          keys.add(key);fresh.push(row);
+        }
+        if(fresh.length){
+          const {error}=await supabase.from("campaigns").insert(fresh);
+          if(error) throw error;
+        }
+        return res.json({success:true,dataType,received:rows.length,imported:fresh.length,skipped, message:"Campaign import completed"});
+      }
+
+      const normalized=[];
+      for(let i=0;i<rows.length;i++){
+        const r=rows[i]||{};
+        const name=clean(r.name || r.lead_name || r.leadName);
+        const email=clean(r.email)?.toLowerCase()||null;
+        const phone=clean(r.phone);
+        if(!name || (!email && !phone)) return res.status(400).json({success:false,message:`Row ${i+2}: name and at least email or phone are required`});
+        normalized.push({
+          client_id:clientId,name,email,phone,
+          source:clean(r.source)||"import",
+          campaign:clean(r.campaign),
+          status:clean(r.status)||"new",
+          notes:clean(r.notes)
+        });
+      }
+      const {data:existing,error:existingError}=await supabase.from("leads").select("email,phone").eq("client_id",clientId);
+      if(existingError) throw existingError;
+      const keys=new Set();
+      for(const x of existing||[]){
+        if(x.email) keys.add("e:"+x.email.toLowerCase());
+        if(x.phone) keys.add("p:"+x.phone.replace(/\s+/g,""));
+      }
+      const fresh=[]; let skipped=0;
+      for(const row of normalized){
+        const ek=row.email?"e:"+row.email:null, pk=row.phone?"p:"+row.phone.replace(/\s+/g,""):null;
+        if((ek&&keys.has(ek))||(pk&&keys.has(pk))){skipped++;continue;}
+        fresh.push(row); if(ek)keys.add(ek); if(pk)keys.add(pk);
+      }
+      if(fresh.length){
+        const {error}=await supabase.from("leads").insert(fresh);
+        if(error) throw error;
+      }
+      return res.json({success:true,dataType,received:rows.length,imported:fresh.length,skipped,message:"Lead import completed"});
+    } catch(e) {
+      console.error("Admin import error:",e?.code||"",e?.message||e);
+      res.status(500).json({success:false,message:"Import failed. Check the file columns and database schema."});
+    }
+  });
+
   router.get("/integrations", async (req,res) => {
     try {
       const { data, error } = await supabase
