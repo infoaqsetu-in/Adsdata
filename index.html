@@ -1675,11 +1675,69 @@ function adminOverview(){
 
 function adminClients(){
   const clients=state.adminOverview?.clients||[];
-  return title("Clients","Create and manage every client account.",'<button class="btn btn-primary" onclick="createAdminClient()">+ Add Client</button>')
-    + '<div class="card"><div style="overflow-x:auto"><table class="table"><thead><tr><th>Client</th><th>Code</th><th>Website</th><th>Users</th><th>Status</th><th></th></tr></thead><tbody>'
-    + clients.map(c=>'<tr><td><b>'+esc(c.display_name)+'</b><div class="muted">'+esc(c.company_name)+'</div></td><td>'+esc(c.client_code)+'</td><td>'+esc(c.website||"—")+'</td><td>'+fmtNum(c.userCount)+'</td><td>'+esc(c.status)+'</td><td><button class="btn btn-light" onclick="toggleAdminClient(\''+c.id+'\',\''+c.status+'\')">'+(c.status==="active"?"Deactivate":"Activate")+'</button></td></tr>').join('')
+  return title("Clients","Create and manage every client account.",'<button class="btn btn-primary" onclick="createAdminClient()">+ Add Client</button> <button class="btn btn-light" onclick="openImportModal()">Import Data</button>')
+    + '<div class="card"><div style="overflow-x:auto"><table class="table"><thead><tr><th>Client</th><th>Code</th><th>Website</th><th>Users</th><th>Status</th><th>Actions</th></tr></thead><tbody>'
+    + clients.map(c=>'<tr><td><b>'+esc(c.display_name)+'</b><div class="muted">'+esc(c.company_name)+'</div></td><td>'+esc(c.client_code)+'</td><td>'+esc(c.website||"—")+'</td><td>'+fmtNum(c.userCount)+'</td><td>'+esc(c.status)+'</td><td><button class="btn btn-light" onclick="openImportModal(\''+c.id+'\')">Import CSV</button> <button class="btn btn-light" onclick="toggleAdminClient(\''+c.id+'\',\''+c.status+'\')">'+(c.status==="active"?"Deactivate":"Activate")+'</button></td></tr>').join('')
     + '</tbody></table></div></div>';
 }
+
+let pendingImportRows = [];
+function parseImportCsv(text){
+  const rows=[];let row=[],cell="",quoted=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i],next=text[i+1];
+    if(ch==='"'&&quoted&&next==='"'){cell+='"';i++;}
+    else if(ch==='"'){quoted=!quoted;}
+    else if(ch===","&&!quoted){row.push(cell.trim());cell="";}
+    else if((ch==="\n"||ch==="\r")&&!quoted){if(ch==="\r"&&next==="\n")i++;row.push(cell.trim());if(row.some(v=>v!==""))rows.push(row);row=[];cell="";}
+    else cell+=ch;
+  }
+  if(quoted)throw new Error("CSV has an unclosed quotation mark.");
+  row.push(cell.trim());if(row.some(v=>v!==""))rows.push(row);
+  if(rows.length<2)throw new Error("CSV must contain a header row and at least one data row.");
+  const headers=rows.shift().map(h=>h.trim().toLowerCase().replace(/[\s-]+/g,"_"));
+  if(headers.some(h=>!h)||new Set(headers).size!==headers.length)throw new Error("Column headers must be non-empty and unique.");
+  return rows.map(values=>Object.fromEntries(headers.map((h,i)=>[h,values[i]||""])));
+}
+function openImportModal(clientId){
+  if(!(state.adminOverview?.clients||[]).length){alert("Create a client first.");return;}
+  const old=document.getElementById("data-import-modal");if(old)old.remove();pendingImportRows=[];
+  const options=(state.adminOverview.clients||[]).map(x=>'<option value="'+esc(x.id)+'" '+(x.id===(clientId||"")?"selected":"")+'>'+esc(x.display_name)+" ("+esc(x.client_code)+")"+'</option>').join("");
+  document.body.insertAdjacentHTML("beforeend",'<div id="data-import-modal" class="modal-backdrop" onclick="if(event.target===this) closeImportModal()"><div class="modal" style="max-width:760px"><div class="modal-head"><h2>Import Client Data</h2><button class="modal-close" onclick="closeImportModal()">×</button></div><p class="muted">Upload a UTF-8 CSV file. Maximum 1,000 rows. Existing duplicate campaigns/leads are skipped.</p><div class="field"><label>Client</label><select id="import-client" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:9px">'+options+'</select></div><div class="field"><label>Data type</label><select id="import-type" onchange="resetImportPreview()" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:9px"><option value="campaigns">Campaign performance</option><option value="leads">Leads</option></select></div><div class="field"><label>CSV file</label><input id="import-file" type="file" accept=".csv,text/csv" onchange="previewImportFile(this)"></div><div id="import-help" class="muted" style="font-size:13px">Campaign headers: campaign_name, platform, spend, impressions, clicks, leads, conversions, cpl, roas, date_start, date_stop, status. Platform: meta, google, linkedin, tiktok, other.</div><div id="import-preview" style="margin-top:12px"></div><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px"><button class="btn btn-light" onclick="closeImportModal()">Cancel</button><button id="import-submit" class="btn btn-primary" disabled onclick="submitImportData()">Import Data</button></div></div></div>');
+}
+function resetImportPreview(){
+  pendingImportRows=[];const p=document.getElementById("import-preview");if(p)p.innerHTML="";
+  const s=document.getElementById("import-submit");if(s){s.disabled=true;s.textContent="Import Data";}
+  const h=document.getElementById("import-help");if(h)h.textContent=document.getElementById("import-type").value==="campaigns"?"Campaign headers: campaign_name, platform, spend, impressions, clicks, leads, conversions, cpl, roas, date_start, date_stop, status. Platforms: meta, google, linkedin, tiktok, other.":"Lead headers: name, email, phone, source, campaign, status, notes. Each lead needs a name and email or phone.";
+}
+function previewImportFile(input){
+  resetImportPreview();const file=input.files&&input.files[0];if(!file)return;
+  if(!file.name.toLowerCase().endsWith(".csv")){alert("Please select a CSV file.");input.value="";return;}
+  if(file.size>5*1024*1024){alert("CSV file must be 5 MB or smaller.");input.value="";return;}
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      pendingImportRows=parseImportCsv(String(reader.result||""));
+      if(pendingImportRows.length>1000)throw new Error("Maximum 1,000 rows per import.");
+      const preview=document.getElementById("import-preview"),headers=Object.keys(pendingImportRows[0]||{});
+      preview.innerHTML="<p><b>"+pendingImportRows.length+" rows ready to review</b> · "+headers.map(esc).join(", ")+"</p><div style='overflow-x:auto;max-height:220px'><table class='table'><thead><tr>"+headers.map(h=>"<th>"+esc(h)+"</th>").join("")+"</tr></thead><tbody>"+pendingImportRows.slice(0,5).map(row=>"<tr>"+headers.map(h=>"<td>"+esc(row[h]||"—")+"</td>").join("")+"</tr>").join("")+"</tbody></table></div><p class='muted'>Showing first "+Math.min(5,pendingImportRows.length)+" rows.</p>";
+      document.getElementById("import-submit").disabled=false;
+    }catch(e){pendingImportRows=[];alert(e.message);input.value="";}
+  };
+  reader.onerror=()=>alert("Could not read this file.");
+  reader.readAsText(file);
+}
+async function submitImportData(){
+  const rows=pendingImportRows;if(!rows.length)return;
+  const button=document.getElementById("import-submit");button.disabled=true;button.textContent="Importing…";
+  try{
+    const result=await apiRequest("/api/admin/import",{method:"POST",body:JSON.stringify({clientId:document.getElementById("import-client").value,dataType:document.getElementById("import-type").value,rows})});
+    alert("Import complete. Received: "+result.received+"; imported: "+result.imported+"; skipped as duplicates: "+result.skipped+".");
+    closeImportModal();await adminRefresh();
+  }catch(e){alert(e.message);button.disabled=false;button.textContent="Import Data";}
+}
+function closeImportModal(){const m=document.getElementById("data-import-modal");if(m)m.remove();pendingImportRows=[];}
+
 function adminUsers(){
   const users=state.adminOverview?.users||[],clients=state.adminOverview?.clients||[];
   return title("Users","Create and manage client portal users.",'<button class="btn btn-primary" onclick="openAddUserModal()">+ Add User</button>')
