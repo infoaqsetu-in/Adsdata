@@ -194,5 +194,45 @@ module.exports = (supabase, authenticateToken) => {
     }catch(e){console.error("Admin update user error:",e?.message||e);res.status(500).json({success:false,message:"Unable to update user"});}
   });
 
+
+  // Soft-delete a client to preserve campaign and reporting history.
+  router.delete("/clients/:clientId", async (req, res) => {
+    const clientId = req.params.clientId;
+    try {
+      const { data: client, error: findError } = await supabase
+        .from("clients").select("id, display_name").eq("id", clientId).maybeSingle();
+      if (findError) throw findError;
+      if (!client) return res.status(404).json({success:false,message:"Client not found"});
+      const { error: clientError } = await supabase.from("clients")
+        .update({ status: "deleted" }).eq("id", clientId);
+      if (clientError) throw clientError;
+      const { error: usersError } = await supabase.from("users")
+        .update({ status: "inactive" }).eq("client_id", clientId);
+      if (usersError) throw usersError;
+      res.json({success:true,message:"Client archived and its users deactivated. Historical data was preserved."});
+    } catch (e) {
+      console.error("Admin delete client error:", e?.message || e);
+      res.status(500).json({success:false,message:"Unable to delete client"});
+    }
+  });
+
+  // Permanently delete a client user; agency admin accounts cannot be deleted here.
+  router.delete("/users/:userId", async (req, res) => {
+    const userId = req.params.userId;
+    try {
+      const { data: user, error: findError } = await supabase
+        .from("users").select("id, role, email").eq("id", userId).maybeSingle();
+      if (findError) throw findError;
+      if (!user) return res.status(404).json({success:false,message:"User not found"});
+      if (user.role === "admin") return res.status(403).json({success:false,message:"Agency admin accounts cannot be deleted here"});
+      const { error } = await supabase.from("users").delete().eq("id", userId);
+      if (error) throw error;
+      res.json({success:true,message:"User permanently deleted"});
+    } catch (e) {
+      console.error("Admin delete user error:", e?.message || e);
+      res.status(500).json({success:false,message:"Unable to delete user"});
+    }
+  });
+
   return router;
 };
