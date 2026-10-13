@@ -170,5 +170,40 @@ function normalizeCampaign({ campaign, insight, clientId, adAccountId, currency,
 module.exports = {
   MetaApiError, graphRequest, graphGetAll, isValidAdAccountId,
   listAdAccounts, getMe, listCampaigns, listCampaignInsights,
-  resolveDateRange, normalizeCampaign, PRESETS
+  resolveDateRange, normalizeCampaign, PRESETS,
+  listPages, listPagePublishedPosts, listPageScheduledPosts,
+  listInstagramMedia: listInstagramMediaWithToken
 };
+
+
+// ---------- Organic Facebook / Instagram content ----------
+const listPages = token => graphGetAll("me/accounts", {
+  fields: "id,name,access_token,instagram_business_account{id,username}",
+  limit: 100
+}, token);
+
+const listPagePublishedPosts = (pageId, pageToken) => graphGetAll(`${pageId}/published_posts`, {
+  fields: "id,message,created_time,permalink_url,full_picture,shares,likes.summary(true),comments.summary(true)",
+  limit: 100
+}, pageToken);
+
+const listPageScheduledPosts = (pageId, pageToken) => graphGetAll(`${pageId}/scheduled_posts`, {
+  fields: "id,message,scheduled_publish_time,created_time,permalink_url,full_picture",
+  limit: 100
+}, pageToken);
+
+const listInstagramMedia = igId => graphGetAll(`${igId}/media`, {
+  fields: "id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count",
+  limit: 100
+}, arguments[1]);
+
+async function listInstagramMediaWithToken(igId, token) {
+  return graphGetAll(`${igId}/media`, {
+    fields: "id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count",
+    limit: 100
+  }, token);
+}
+
+async function getInstagramInsights(igId, token) {
+  return graphRequest(`${igId}/insights`, { metric: "reach,views,accounts_engaged", period: "day" }, token);
+}
