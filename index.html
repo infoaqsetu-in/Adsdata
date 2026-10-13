@@ -1090,6 +1090,18 @@ async function createAdminClient(){
   if(!clientCode||!companyName||!displayName)return;
   try{await apiRequest("/api/admin/clients",{method:"POST",body:JSON.stringify({clientCode,companyName,displayName})});await adminRefresh();}catch(e){alert(e.message);}
 }
+
+async function deleteAdminClient(id,name){
+  if(!confirm('Delete client "'+name+'"? This archives the client, deactivates its users, and preserves reporting history.'))return;
+  try{await apiRequest('/api/admin/clients/'+encodeURIComponent(id),{method:'DELETE'});await adminRefresh();alert('Client archived and users deactivated.');}
+  catch(e){alert(e.message);}
+}
+async function deleteAdminUser(id,name){
+  if(!confirm('Permanently delete user "'+name+'"? This cannot be undone.'))return;
+  try{await apiRequest('/api/admin/users/'+encodeURIComponent(id),{method:'DELETE'});await adminRefresh();alert('User deleted.');}
+  catch(e){alert(e.message);}
+}
+
 async function toggleAdminClient(id,current){try{await apiRequest("/api/admin/clients/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status:current==="active"?"inactive":"active"})});await adminRefresh();}catch(e){alert(e.message);}}
 function openAddUserModal(){
   const clients=state.adminOverview?.clients||[];
@@ -1677,7 +1689,7 @@ function adminClients(){
   const clients=state.adminOverview?.clients||[];
   return title("Clients","Create and manage every client account.",'<button class="btn btn-primary" onclick="createAdminClient()">+ Add Client</button> <button class="btn btn-light" onclick="openImportModal()">Import Data</button>')
     + '<div class="card"><div style="overflow-x:auto"><table class="table"><thead><tr><th>Client</th><th>Code</th><th>Website</th><th>Users</th><th>Status</th><th>Actions</th></tr></thead><tbody>'
-    + clients.map(c=>'<tr><td><b>'+esc(c.display_name)+'</b><div class="muted">'+esc(c.company_name)+'</div></td><td>'+esc(c.client_code)+'</td><td>'+esc(c.website||"—")+'</td><td>'+fmtNum(c.userCount)+'</td><td>'+esc(c.status)+'</td><td><button class="btn btn-light" onclick="openImportModal(\''+c.id+'\')">Import CSV</button> <button class="btn btn-light" onclick="toggleAdminClient(\''+c.id+'\',\''+c.status+'\')">'+(c.status==="active"?"Deactivate":"Activate")+'</button></td></tr>').join('')
+    + clients.map(c=>'<tr><td><b>'+esc(c.display_name)+'</b><div class="muted">'+esc(c.company_name)+'</div></td><td>'+esc(c.client_code)+'</td><td>'+esc(c.website||"—")+'</td><td>'+fmtNum(c.userCount)+'</td><td>'+esc(c.status)+'</td><td>'+(c.status==="deleted"?'Archived':'<button class="btn btn-light" onclick="openImportModal(\''+c.id+'\')">Import CSV</button> <button class="btn btn-light" onclick="toggleAdminClient(\''+c.id+'\',\''+c.status+'\')">'+(c.status==="active"?"Deactivate":"Activate")+'</button> <button class="btn btn-light" style="color:var(--red)" onclick="deleteAdminClient(\''+c.id+'\',\''+esc(c.display_name)+'\')">Delete</button>')+'</td></tr>').join('')
     + '</tbody></table></div></div>';
 }
 
@@ -1742,7 +1754,7 @@ function adminUsers(){
   const users=state.adminOverview?.users||[],clients=state.adminOverview?.clients||[];
   return title("Users","Create and manage client portal users.",'<button class="btn btn-primary" onclick="openAddUserModal()">+ Add User</button>')
     + '<div class="card"><div style="overflow-x:auto"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Client</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>'
-    + users.map(u=>'<tr><td>'+esc(u.name)+'</td><td>'+esc(u.email)+'</td><td>'+esc(clients.find(c=>c.id===u.client_id)?.display_name||"Agency")+'</td><td>'+esc(u.role)+'</td><td>'+esc(u.status)+'</td><td>'+(u.role==="admin"?"":'<button class="btn btn-light" onclick="toggleAdminUser(\''+u.id+'\',\''+u.status+'\')">'+(u.status==="active"?"Deactivate":"Activate")+'</button>')+'</td></tr>').join('')
+    + users.map(u=>'<tr><td>'+esc(u.name)+'</td><td>'+esc(u.email)+'</td><td>'+esc(clients.find(c=>c.id===u.client_id)?.display_name||"Agency")+'</td><td>'+esc(u.role)+'</td><td>'+esc(u.status)+'</td><td>'+(u.role==="admin"?"":'<button class="btn btn-light" onclick="toggleAdminUser(\''+u.id+'\',\''+u.status+'\')">'+(u.status==="active"?"Deactivate":"Activate")+'</button> <button class="btn btn-light" style="color:var(--red)" onclick="deleteAdminUser(\''+u.id+'\',\''+esc(u.name)+'\')">Delete</button>')+'</td></tr>').join('')
     + '</tbody></table></div></div>';
 }
 async function loadMetaPermissionAccounts(){
