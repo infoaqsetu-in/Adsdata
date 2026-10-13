@@ -102,8 +102,17 @@ module.exports = (supabase, authenticateToken) => {
     const clientId = String(req.query.clientId || "");
     if (!clientId) return fail(res, 400, "clientId is required");
     try {
-      const conn = await getConnection(clientId);
-      if (!conn) return fail(res, 404, "No active Meta connection for this client");
+      // Use the agency's existing active Meta connection as the account directory.
+      // The admin can assign those accounts to a target client without reconnecting Meta.
+      let conn = await getConnection(clientId);
+      if (!conn) {
+        const { data: source, error: sourceError } = await supabase.from("meta_connections")
+          .select("*").eq("status", "active").not("access_token", "is", null)
+          .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+        if (sourceError) throw sourceError;
+        if (!source) return fail(res, 404, "No active Meta connection exists. Connect Meta to the agency account first.");
+        conn = { ...source, token: decryptToken(source.access_token) };
+      }
       const [accounts, permissionResult] = await Promise.all([
         meta.listAdAccounts(conn.token),
         supabase.from("meta_account_permissions").select("ad_account_id,is_allowed")
@@ -128,8 +137,16 @@ module.exports = (supabase, authenticateToken) => {
       return fail(res, 400, "clientId and valid allowedAccountIds are required");
     }
     try {
-      const conn = await getConnection(clientId);
-      if (!conn) return fail(res, 404, "No active Meta connection for this client");
+      // Prefer the target client's connection; otherwise use the agency's existing connection.
+      let conn = await getConnection(clientId);
+      if (!conn) {
+        const { data: source, error: sourceError } = await supabase.from("meta_connections")
+          .select("*").eq("status", "active").not("access_token", "is", null)
+          .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+        if (sourceError) throw sourceError;
+        if (!source) return fail(res, 404, "No active Meta connection exists. Connect Meta to the agency account first.");
+        conn = { ...source, token: decryptToken(source.access_token) };
+      }
       const accounts = await meta.listAdAccounts(conn.token);
       const validIds = new Set(accounts.map(a => a.id));
       if (ids.some(id => !validIds.has(id))) return fail(res, 400, "One or more accounts are not accessible through this Meta connection");
@@ -142,6 +159,24 @@ module.exports = (supabase, authenticateToken) => {
       if (rows.length) {
         const { error } = await supabase.from("meta_account_permissions").insert(rows);
         if (error) throw error;
+      }
+      // Attach the existing agency token to this client so the client's normal
+      // campaign/insights/sync endpoints can use the approved account list.
+      if (conn.client_id !== clientId) {
+        const next = accounts.find(a => ids.includes(a.id));
+        const { error: attachError } = await supabase.from("meta_connections").upsert({
+          client_id: clientId,
+          meta_user_id: conn.meta_user_id,
+          ad_account_id: next?.id || null,
+          ad_account_name: next?.name || null,
+          currency: next?.currency || null,
+          access_token: conn.access_token,
+          token_expires_at: conn.token_expires_at,
+          status: "active",
+          last_sync_error: null,
+          updated_at: new Date().toISOString()
+        }, { onConflict: "client_id" });
+        if (attachError) throw attachError;
       }
       // If the currently selected account was revoked, switch to the first allowed account.
       if (!ids.includes(conn.ad_account_id)) {
