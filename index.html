@@ -1759,6 +1759,27 @@ function adminUsers(){
     + users.map(u=>'<tr><td>'+esc(u.name)+'</td><td>'+esc(u.email)+'</td><td>'+esc(clients.find(c=>c.id===u.client_id)?.display_name||"Agency")+'</td><td>'+esc(u.role)+'</td><td>'+esc(u.status)+'</td><td>'+(u.role==="admin"?"":'<button class="btn btn-light" onclick="toggleAdminUser(\''+u.id+'\',\''+u.status+'\')">'+(u.status==="active"?"Deactivate":"Activate")+'</button> <button class="btn btn-light" style="color:var(--red)" onclick="deleteAdminUser(\''+u.id+'\',\''+esc(u.name)+'\')">Delete</button>')+'</td></tr>').join('')
     + '</tbody></table></div></div>';
 }
+
+async function loadMetaSocialPages(){
+ const clientId=document.getElementById("meta-social-client")?.value;
+ const host=document.getElementById("meta-social-pages");
+ if(!clientId||!host)return;
+ host.innerHTML='<p class="muted">Loading Pages…</p>';
+ try{
+  const d=await apiRequest('/api/meta/social/accounts?clientId='+encodeURIComponent(clientId));
+  host.innerHTML=(d.pages||[]).map(p=>'<label style="display:block;padding:10px;border-bottom:1px solid var(--line)"><input type="checkbox" class="meta-social-page" value="'+esc(p.id)+'" checked> <b>'+esc(p.name)+'</b> '+(p.instagramAccount?' · Instagram @'+esc(p.instagramAccount.username||p.instagramAccount.id):'')+'</label>').join('')||'<p>No Pages found. Reconnect Meta with Page permissions.</p>';
+  host.dataset.clientId=clientId;
+ }catch(e){host.innerHTML='<p class="error-message">'+esc(e.message)+'</p>';}
+}
+async function syncMetaSocialPosts(){
+ const clientId=document.getElementById("meta-social-client")?.value, host=document.getElementById("meta-social-pages"), out=document.getElementById("meta-social-result");
+ if(!clientId||host?.dataset.clientId!==clientId){alert('Select a client and load its Pages first.');return;}
+ const pageIds=Array.from(host.querySelectorAll('.meta-social-page:checked')).map(x=>x.value);
+ out.textContent='Syncing…';
+ try{const d=await apiRequest('/api/meta/social/sync',{method:'POST',body:JSON.stringify({clientId,pageIds})});out.textContent='Synced '+d.postsSynced+' posts from '+d.pagesSynced+' Pages.';await loadSocialCalendar();}
+ catch(e){out.textContent=e.message;}
+}
+
 async function loadMetaPermissionAccounts(){
   const clientId=document.getElementById("meta-permission-client")?.value;
   const host=document.getElementById("meta-permission-accounts");
@@ -1796,6 +1817,7 @@ function adminIntegrations(){
     + '<div class="field"><label for="meta-permission-client">Client</label><select id="meta-permission-client" onchange="loadMetaPermissionAccounts()" style="width:100%;max-width:560px;padding:12px;border:1px solid var(--line);border-radius:9px"><option value="">Select client…</option>'
     + clients.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.display_name)+' ('+esc(c.client_code)+')</option>').join('')
     + '</select></div><p id="meta-permission-note" class="muted"></p><div id="meta-permission-accounts" style="max-width:650px"></div><div style="margin-top:16px"><button class="btn btn-primary" onclick="saveMetaPermissionAccounts()">Save Account Permissions</button></div></div>'
+    + '<div class="card"><h3>Facebook & Instagram Organic Posts</h3><p class="muted">Choose a client, load Pages from the connected Meta account, then sync available published and scheduled posts.</p><div class="field"><label for="meta-social-client">Client</label><select id="meta-social-client" onchange="loadMetaSocialPages()" style="width:100%;max-width:560px;padding:12px;border:1px solid var(--line);border-radius:9px"><option value="">Select client…</option>' + clients.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.display_name)+'</option>').join('') + '</select></div><div id="meta-social-pages"></div><button class="btn btn-primary" onclick="syncMetaSocialPosts()">Sync Selected Pages & Posts</button><p id="meta-social-result" class="muted"></p></div>'
     + '<div class="card"><h3>Connection Status</h3><div style="overflow-x:auto"><table class="table"><thead><tr><th>Client</th><th>Meta account</th><th>Status</th><th>Last synced</th><th>Token expiry</th></tr></thead><tbody>'
     + rows.map(r=>'<tr><td><b>'+esc(clients.find(c=>c.id===r.client_id)?.display_name||r.client_id)+'</b></td><td>'+esc(r.ad_account_name||r.ad_account_id||"—")+'</td><td>'+esc(r.status||"—")+'</td><td>'+esc(r.last_synced_at?new Date(r.last_synced_at).toLocaleString("en-IN"):"Never")+'</td><td>'+esc(r.token_expires_at?new Date(r.token_expires_at).toLocaleDateString("en-IN"):"—")+'</td></tr>').join('')
     + (rows.length?"":"<tr><td colspan=\"5\" class=\"muted\">No Meta connections yet.</td></tr>")
