@@ -87,6 +87,75 @@ module.exports = (supabase, authenticateToken) => {
     return selected;
   }
 
+
+  async function allowedAccountIds(clientId, fallbackAccountId) {
+    const { data, error } = await supabase.from("meta_account_permissions")
+      .select("ad_account_id,is_allowed").eq("client_id", clientId);
+    if (error) throw error;
+    if (!data || data.length === 0) return fallbackAccountId ? [fallbackAccountId] : [];
+    return data.filter(x => x.is_allowed).map(x => x.ad_account_id);
+  }
+
+  // Admin: inspect accounts available through a client's Meta connection.
+  router.get("/admin/accounts", authenticateToken, async (req, res) => {
+    if (req.user.role !== "admin") return fail(res, 403, "Admin role required");
+    const clientId = String(req.query.clientId || "");
+    if (!clientId) return fail(res, 400, "clientId is required");
+    try {
+      const conn = await getConnection(clientId);
+      if (!conn) return fail(res, 404, "No active Meta connection for this client");
+      const [accounts, permissionResult] = await Promise.all([
+        meta.listAdAccounts(conn.token),
+        supabase.from("meta_account_permissions").select("ad_account_id,is_allowed")
+          .eq("client_id", clientId)
+      ]);
+      if (permissionResult.error) throw permissionResult.error;
+      const explicit = permissionResult.data || [];
+      const hasExplicit = explicit.length > 0;
+      const allowed = new Set(hasExplicit
+        ? explicit.filter(x => x.is_allowed).map(x => x.ad_account_id)
+        : [conn.ad_account_id].filter(Boolean));
+      res.json({ success: true, selectedAdAccountId: conn.ad_account_id, hasExplicitPermissions: hasExplicit,
+        accounts: accounts.map(a => ({...a, allowed: allowed.has(a.id)})) });
+    } catch (err) { await handleError(req, res, err, "admin-account-permissions"); }
+  });
+
+  router.put("/admin/permissions", authenticateToken, async (req, res) => {
+    if (req.user.role !== "admin") return fail(res, 403, "Admin role required");
+    const clientId = String(req.body?.clientId || "");
+    const ids = req.body?.allowedAccountIds;
+    if (!clientId || !Array.isArray(ids) || ids.some(id => typeof id !== "string" || !meta.isValidAdAccountId(id))) {
+      return fail(res, 400, "clientId and valid allowedAccountIds are required");
+    }
+    try {
+      const conn = await getConnection(clientId);
+      if (!conn) return fail(res, 404, "No active Meta connection for this client");
+      const accounts = await meta.listAdAccounts(conn.token);
+      const validIds = new Set(accounts.map(a => a.id));
+      if (ids.some(id => !validIds.has(id))) return fail(res, 400, "One or more accounts are not accessible through this Meta connection");
+      const { error: deleteError } = await supabase.from("meta_account_permissions").delete().eq("client_id", clientId);
+      if (deleteError) throw deleteError;
+      const rows = accounts.map(a => ({
+        client_id: clientId, ad_account_id: a.id, ad_account_name: a.name || null,
+        is_allowed: ids.includes(a.id), updated_at: new Date().toISOString()
+      }));
+      if (rows.length) {
+        const { error } = await supabase.from("meta_account_permissions").insert(rows);
+        if (error) throw error;
+      }
+      // If the currently selected account was revoked, switch to the first allowed account.
+      if (!ids.includes(conn.ad_account_id)) {
+        const next = accounts.find(a => ids.includes(a.id));
+        const { error } = await supabase.from("meta_connections").update({
+          ad_account_id: next?.id || null, ad_account_name: next?.name || null,
+          currency: next?.currency || null, updated_at: new Date().toISOString()
+        }).eq("client_id", clientId);
+        if (error) throw error;
+      }
+      res.json({ success: true, allowedAccountIds: ids });
+    } catch (err) { await handleError(req, res, err, "save-account-permissions"); }
+  });
+
   // ---------------- OAuth ----------------
   router.get("/connect", authenticateToken, async (req, res) => {
     if (!process.env.META_APP_ID || !process.env.META_REDIRECT_URI) {
@@ -220,7 +289,8 @@ module.exports = (supabase, authenticateToken) => {
     try {
       const conn = await requireConnection(req, res); if (!conn) return;
       const accounts = await meta.listAdAccounts(conn.token);
-      res.json({ success: true, selectedAdAccountId: conn.ad_account_id, accounts });
+      const allowed = new Set(await allowedAccountIds(req.user.clientId, conn.ad_account_id));
+      res.json({ success: true, selectedAdAccountId: conn.ad_account_id, accounts: accounts.filter(a => allowed.has(a.id)) });
     } catch (err) { await handleError(req, res, err, "accounts"); }
   });
 
@@ -232,6 +302,8 @@ module.exports = (supabase, authenticateToken) => {
       const accounts = await meta.listAdAccounts(conn.token);
       const acct = accounts.find(a => a.id === id);
       if (!acct) return fail(res, 403, "That ad account is not accessible with this Meta connection");
+      const allowed = new Set(await allowedAccountIds(req.user.clientId, conn.ad_account_id));
+      if (!allowed.has(id)) return fail(res, 403, "This ad account has not been approved for your client");
       const { error } = await supabase.from("meta_connections")
         .update({ ad_account_id: acct.id, ad_account_name: acct.name, currency: acct.currency || null, updated_at: new Date().toISOString() })
         .eq("client_id", req.user.clientId);
@@ -245,6 +317,7 @@ module.exports = (supabase, authenticateToken) => {
     try {
       const conn = await requireConnection(req, res); if (!conn) return;
       if (!conn.ad_account_id) return fail(res, 400, "No ad account selected", "META_NO_AD_ACCOUNT");
+      if (!(await allowedAccountIds(req.user.clientId, conn.ad_account_id)).includes(conn.ad_account_id)) return fail(res, 403, "This ad account has not been approved for your client");
       const campaigns = await meta.listCampaigns(conn.token, conn.ad_account_id);
       res.json({ success: true, adAccountId: conn.ad_account_id, campaigns });
     } catch (err) { await handleError(req, res, err, "campaigns"); }
@@ -255,6 +328,7 @@ module.exports = (supabase, authenticateToken) => {
       const range = meta.resolveDateRange(req.query);
       const conn = await requireConnection(req, res); if (!conn) return;
       if (!conn.ad_account_id) return fail(res, 400, "No ad account selected", "META_NO_AD_ACCOUNT");
+      if (!(await allowedAccountIds(req.user.clientId, conn.ad_account_id)).includes(conn.ad_account_id)) return fail(res, 403, "This ad account has not been approved for your client");
       const insights = await meta.listCampaignInsights(conn.token, conn.ad_account_id, range);
       res.json({ success: true, adAccountId: conn.ad_account_id, range: range.label, insights });
     } catch (err) { await handleError(req, res, err, "insights"); }
@@ -269,6 +343,7 @@ module.exports = (supabase, authenticateToken) => {
       const range = meta.resolveDateRange(req.body || {});
       const conn = await requireConnection(req, res); if (!conn) return;
       if (!conn.ad_account_id) return fail(res, 400, "No ad account selected", "META_NO_AD_ACCOUNT");
+      if (!(await allowedAccountIds(clientId, conn.ad_account_id)).includes(conn.ad_account_id)) return fail(res, 403, "This ad account has not been approved for your client");
 
       const [campaigns, insights] = await Promise.all([
         meta.listCampaigns(conn.token, conn.ad_account_id),
