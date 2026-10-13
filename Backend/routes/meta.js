@@ -302,6 +302,68 @@ module.exports = (supabase, authenticateToken) => {
     } catch (err) { await handleError(req, res, err, "connect-token"); }
   });
 
+
+  // Organic Facebook and Instagram accounts accessible to the connected Meta user.
+  router.get("/social/accounts", authenticateToken, async (req,res) => {
+    if (req.user.role !== "admin") return fail(res,403,"Admin role required");
+    const clientId=String(req.query.clientId||"");
+    if(!clientId)return fail(res,400,"clientId is required");
+    try {
+      let conn=await getConnection(clientId);
+      if(!conn){
+        const {data:source,error}=await supabase.from("meta_connections").select("*")
+          .eq("status","active").not("access_token","is",null).order("updated_at",{ascending:false}).limit(1).maybeSingle();
+        if(error)throw error;
+        if(!source)return fail(res,404,"Connect Meta to the agency first");
+        conn={...source,token:decryptToken(source.access_token)};
+      }
+      const pages=await meta.listPages(conn.token);
+      res.json({success:true,pages:pages.map(p=>({id:p.id,name:p.name,instagramAccount:p.instagram_business_account?{id:p.instagram_business_account.id,username:p.instagram_business_account.username}:null}))});
+    } catch(err){await handleError(req,res,err,"meta-social-accounts");}
+  });
+
+  // Sync authorized Facebook Page and linked Instagram content into the chosen client calendar.
+  router.post("/social/sync", authenticateToken, async (req,res) => {
+    const isAdmin=req.user.role==="admin";
+    const clientId=isAdmin?String(req.body?.clientId||""):req.user.clientId;
+    if(!clientId)return fail(res,400,"clientId is required");
+    try{
+      let conn=await getConnection(clientId);
+      if(!conn){
+        if(!isAdmin)return fail(res,404,"No Meta connection for this client");
+        const {data:source,error}=await supabase.from("meta_connections").select("*")
+          .eq("status","active").not("access_token","is",null).order("updated_at",{ascending:false}).limit(1).maybeSingle();
+        if(error)throw error;if(!source)return fail(res,404,"Connect Meta to the agency first");
+        conn={...source,token:decryptToken(source.access_token)};
+      }
+      const pages=await meta.listPages(conn.token);
+      const requested=Array.isArray(req.body?.pageIds)?req.body.pageIds:[];
+      const selected=requested.length?pages.filter(p=>requested.includes(p.id)):pages;
+      if(requested.some(id=>!pages.some(p=>p.id===id)))return fail(res,403,"One or more Pages are not accessible to this Meta connection");
+      let synced=0;
+      for(const p of selected){
+        const [published,scheduled]=await Promise.all([
+          meta.listPagePublishedPosts(p.id,p.access_token),
+          meta.listPageScheduledPosts(p.id,p.access_token).catch(e=>{if(e.metaCode===100||e.metaCode===10)return [];throw e;})
+        ]);
+        const rows=[
+          ...published.map(x=>({client_id:clientId,platform:"facebook",caption:x.message||"(No caption)",media_url:x.full_picture||null,post_url:x.permalink_url||null,platform_post_id:x.id,status:"published",published_at:x.created_time||null,scheduled_at:x.created_time||null,likes_count:x.likes?.summary?.total_count??null,comments_count:x.comments?.summary?.total_count??null,updated_at:new Date().toISOString()})),
+          ...scheduled.map(x=>({client_id:clientId,platform:"facebook",caption:x.message||"(No caption)",media_url:x.full_picture||null,post_url:x.permalink_url||null,platform_post_id:x.id,status:"scheduled",scheduled_at:x.scheduled_publish_time?new Date(Number(x.scheduled_publish_time)*1000).toISOString():null,updated_at:new Date().toISOString()}))
+        ];
+        const igId=p.instagram_business_account?.id;
+        if(igId){
+          const media=await meta.listInstagramMedia(igId,conn.token);
+          rows.push(...media.map(x=>({client_id:clientId,platform:"instagram",caption:x.caption||"(No caption)",media_url:x.media_url||null,post_url:x.permalink||null,platform_post_id:x.id,status:"published",published_at:x.timestamp||null,scheduled_at:x.timestamp||null,likes_count:x.like_count??null,comments_count:x.comments_count??null,updated_at:new Date().toISOString()})));
+        }
+        for(let i=0;i<rows.length;i+=100){
+          const {error}=await supabase.from("social_posts").upsert(rows.slice(i,i+100),{onConflict:"platform,platform_post_id"});
+          if(error)throw error;synced+=Math.min(100,rows.length-i);
+        }
+      }
+      res.json({success:true,pagesSynced:selected.length,postsSynced:synced});
+    }catch(err){await handleError(req,res,err,"meta-social-sync");}
+  });
+
   // ---------------- status / accounts ----------------
   router.get("/status", authenticateToken, async (req, res) => {
     try {
