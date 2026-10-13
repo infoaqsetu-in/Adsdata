@@ -34,6 +34,15 @@ module.exports = (supabase, authenticateToken) => {
     } catch(e){ console.error("Admin overview error:",e?.message||e); res.status(500).json({success:false,message:"Unable to load admin overview"}); }
   });
 
+  router.get("/leads", async (req,res) => {
+    try { let q=supabase.from("leads").select("*, clients(display_name,client_code)").order("created_at",{ascending:false}).limit(2000); if(typeof req.query.clientId==="string"&&req.query.clientId)q=q.eq("client_id",req.query.clientId); const {data,error}=await q; if(error)throw error; res.json({success:true,leads:data||[]}); }
+    catch(e){console.error("Admin leads error:",e?.message||e);res.status(500).json({success:false,message:"Unable to load agency leads"});}
+  });
+  router.get("/social-posts", async (req,res) => {
+    try { let q=supabase.from("social_posts").select("*, clients(display_name,client_code)").order("scheduled_at",{ascending:false}).limit(2000); if(typeof req.query.clientId==="string"&&req.query.clientId)q=q.eq("client_id",req.query.clientId); const {data,error}=await q; if(error)throw error; res.json({success:true,posts:data||[]}); }
+    catch(e){console.error("Admin social posts error:",e?.message||e);res.status(500).json({success:false,message:"Unable to load social calendar"});}
+  });
+
   router.post("/import", async (req, res) => {
     try {
       const { clientId, dataType, rows } = req.body || {};
