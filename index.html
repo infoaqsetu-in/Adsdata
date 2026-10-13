@@ -1206,9 +1206,10 @@ async function loadMetaStatus(){
   }
 }
 
-async function connectMeta(){
+async function connectMeta(clientId){
   try{
-    const data = await apiRequest("/api/meta/connect");
+    const connectUrl = "/api/meta/connect" + (clientId ? "?clientId=" + encodeURIComponent(clientId) : "");
+    const data = await apiRequest(connectUrl);
     const popup = window.open(data.authUrl, "aqsetu_meta", "width=620,height=760");
     if(!popup){
       window.location.href = data.authUrl;
@@ -1812,7 +1813,8 @@ function adminIntegrations(){
   const rows=state.adminIntegrations?.integrations||[];
   const clients=state.adminOverview?.clients||[];
   if(!state.adminIntegrations) loadAdminIntegrations().then(render);
-  return title("Integrations","Choose exactly which Meta ad accounts each client can access.")
+  return title("Integrations","Manage Meta connections, client account permissions, and organic social content.")
+    + '<div class="card"><h3>Connect or Reconnect Meta</h3><p class="muted">Choose the client that should own this Meta connection, then authorize the Facebook account in the popup. Reconnect to grant newly requested Page and Instagram permissions.</p><div class="field"><label for="meta-connect-client">Client for this connection</label><select id="meta-connect-client" style="width:100%;max-width:560px;padding:12px;border:1px solid var(--line);border-radius:9px"><option value="">Select client…</option>' + clients.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.display_name)+' ('+esc(c.client_code)+')</option>').join('') + '</select></div><button class="btn btn-primary" onclick="(function(){const id=document.getElementById(\'meta-connect-client\').value;if(!id){alert(\'Select a client first.\');return;}connectMeta(id);})()">Connect / Reconnect Meta</button></div>'
     + '<div class="card"><h3>Meta Ad Account Permissions</h3><p class="muted">Select a client, load the accounts available through its Meta connection, and check only the accounts it may access.</p>'
     + '<div class="field"><label for="meta-permission-client">Client</label><select id="meta-permission-client" onchange="loadMetaPermissionAccounts()" style="width:100%;max-width:560px;padding:12px;border:1px solid var(--line);border-radius:9px"><option value="">Select client…</option>'
     + clients.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.display_name)+' ('+esc(c.client_code)+')</option>').join('')
