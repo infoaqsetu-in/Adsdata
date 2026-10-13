@@ -107,7 +107,7 @@ module.exports = (supabase, authenticateToken) => {
       const token = jwt.sign(
         { userId:user.id, clientId, role },
         process.env.JWT_SECRET,
-        { expiresIn:"8h" }
+        { expiresIn:"8h", algorithm:"HS256" }
       );
 
       res.json({
