@@ -688,7 +688,7 @@ const clientPages = [
   "Profile"
  ];
 
-const adminPages = ["Admin Overview","Clients","Users","Integrations","Profile"];
+const adminPages = ["Admin Overview","Clients","Users","Integrations","Leads","Social Media","Profile"];
 
 const icons = {
   "Admin Overview":"⌂",
@@ -1582,6 +1582,8 @@ function pageContent(){
       case "Clients": return adminClients();
       case "Users": return adminUsers();
       case "Integrations": return adminIntegrations();
+      case "Leads": return leads();
+      case "Social Media": return social();
       case "Profile": return profile();
       default: return adminOverview();
     }
@@ -2084,293 +2086,21 @@ function campaigns(){
    LEADS
    ========================================================= */
 
-function leads(){
-
-  return title(
-    "Leads",
-    "All leads captured for AQ Setu.",
-    `<button
-      class="btn btn-light"
-      onclick="alert('Export CSV will be connected to live data later.')"
-    >
-      Export CSV
-    </button>`
-  )
-
-  + `
-
-    <div class="card">
-
-      <div class="tabs">
-
-        ${[
-          "All Leads",
-          "New",
-          "Contacted",
-          "Converted"
-        ].map(status => `
-
-          <button
-            class="${state.leadStatus === status ? "active" : ""}"
-            onclick="
-              state.leadStatus='${status}';
-              render()
-            "
-          >
-            ${status}
-          </button>
-
-        `).join("")}
-
-      </div>
-
-      <input
-        style="
-          width:100%;
-          padding:12px;
-          border:1px solid var(--line);
-          border-radius:9px;
-          margin-bottom:14px
-        "
-        placeholder="Search leads..."
-      >
-
-      <table class="table">
-
-        <thead>
-
-          <tr>
-            <th>Lead</th>
-            <th>Date</th>
-            <th>Source</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-
-        </thead>
-
-        <tbody>
-
-          ${[
-            ["Rahul Sharma","May 30, 2026","Meta Ads","New"],
-            ["Priya Patel","May 30, 2026","Google Ads","Contacted"],
-            ["Amit Kumar","May 29, 2026","Meta Ads","Converted"],
-            ["Sneha Mehta","May 29, 2026","Website","New"],
-            ["Vikram Singh","May 28, 2026","Google Ads","Contacted"]
-          ].map(r => `
-
-            <tr>
-
-              <td>
-
-                <div class="person">
-
-                  <div class="mini">
-                    ${r[0][0]}
-                  </div>
-
-                  <b>
-                    ${r[0]}
-                  </b>
-
-                </div>
-
-              </td>
-
-              <td>${r[1]}</td>
-
-              <td>${r[2]}</td>
-
-              <td>
-
-                <span class="badge ${
-                  r[3] === "Converted"
-                    ? "green"
-                    : r[3] === "Contacted"
-                    ? "orange"
-                    : "purple"
-                }">
-
-                  ${r[3]}
-
-                </span>
-
-              </td>
-
-              <td>
-
-                <button
-                  class="btn btn-light"
-                  onclick="alert('Lead details: ${r[0]}')"
-                >
-                  View
-                </button>
-
-              </td>
-
-            </tr>
-
-          `).join("")}
-
-        </tbody>
-
-      </table>
-
-    </div>
-
-  `;
+async function loadLeadsPage(){
+ const box=document.getElementById("leads-live-table");if(!box)return;box.innerHTML='<div class="muted">Loading leads…</div>';
+ try{const admin=state.user?.role==="admin";const d=await apiRequest(admin?"/api/admin/leads":"/api/leads");const search=(document.getElementById("lead-search")?.value||"").toLowerCase();const rows=(d.leads||[]).filter(x=>(state.leadStatus==="All Leads"||(x.status||"new").toLowerCase()===state.leadStatus.toLowerCase())&&[x.name,x.email,x.phone,x.source,x.campaign,x.clients?.display_name].some(v=>String(v||"").toLowerCase().includes(search)));
+ box.innerHTML=rows.length?'<div style="overflow-x:auto"><table class="table"><thead><tr><th>Lead</th>'+(admin?'<th>Client</th>':'')+'<th>Date</th><th>Source</th><th>Campaign</th><th>Status</th></tr></thead><tbody>'+rows.map(x=>'<tr><td><b>'+esc(x.name||"—")+'</b><div class="muted">'+esc(x.email||x.phone||"")+'</div></td>'+(admin?'<td>'+esc(x.clients?.display_name||"—")+'</td>':'')+'<td>'+esc(x.created_at?new Date(x.created_at).toLocaleDateString("en-IN"):"—")+'</td><td>'+esc(x.source||"—")+'</td><td>'+esc(x.campaign||"—")+'</td><td>'+esc(x.status||"new")+'</td></tr>').join('')+'</tbody></table></div>':'<div class="empty">No matching leads found.</div>';
+ }catch(e){box.innerHTML='<div class="error-message">'+esc(e.message)+'</div>';}
 }
+function leads(){setTimeout(loadLeadsPage,0);return title("Leads",state.user?.role==="admin"?"All client leads.":"Your business leads.")+'<div class="card"><input id="lead-search" placeholder="Search leads'+(state.user?.role==="admin"?' or client':'')+'" oninput="loadLeadsPage()" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:9px;margin-bottom:14px"><div class="tabs">'+["All Leads","New","Contacted","Converted"].map(s=>'<button class="'+(state.leadStatus===s?'active':'')+'" onclick="state.leadStatus=\''+s+'\';loadLeadsPage();render()">'+s+'</button>').join('')+'</div><div id="leads-live-table"></div></div>';}
 
-
-/* =========================================================
-   SOCIAL MEDIA
-   ========================================================= */
-
-function social(){
-
-  return title(
-    "Social Media",
-    "Content calendar and publishing status.",
-    `<button
-      class="btn btn-primary"
-      onclick="go('Content Approval')"
-    >
-      View Approvals
-    </button>`
-  )
-
-  + `
-
-    <div class="grid two">
-
-      <div class="card">
-
-        <div class="section-head">
-
-          <h3>May 2026</h3>
-
-          <span class="badge green">
-            24 Posts
-          </span>
-
-        </div>
-
-        <div style="
-          display:grid;
-          grid-template-columns:repeat(7,1fr);
-          gap:7px;
-          text-align:center;
-          font-size:12px
-        ">
-
-          ${[
-            "S","M","T","W","T","F","S"
-          ].map(day => `
-
-            <b style="
-              color:var(--muted);
-              padding:8px
-            ">
-              ${day}
-            </b>
-
-          `).join("")}
-
-          ${Array.from(
-            {length:35},
-            (_,i) => `
-
-              <div style="
-                padding:10px;
-                border:1px solid var(--line);
-                border-radius:7px;
-                background:${
-                  [4,9,15,21,27].includes(i)
-                  ? "#eaf7ef"
-                  : "#fff"
-                }
-              ">
-                ${i < 3 ? "" : i - 2}
-              </div>
-
-            `
-          ).join("")}
-
-        </div>
-
-      </div>
-
-
-      <div class="card">
-
-        <div class="section-head">
-
-          <h3>
-            Upcoming Posts
-          </h3>
-
-          <span style="
-            color:var(--purple);
-            font-size:12px
-          ">
-            View All
-          </span>
-
-        </div>
-
-        <div class="list">
-
-          ${[
-            ["The future of digital marketing is here!","Approved"],
-            ["Tips to improve your brand presence online.","Pending"],
-            ["Let’s grow your business together.","Scheduled"]
-          ].map((item,i) => `
-
-            <div class="list-item">
-
-              <div>
-
-                <b>
-                  ${item[0]}
-                </b>
-
-                <div style="
-                  color:var(--muted);
-                  font-size:12px;
-                  margin-top:4px
-                ">
-                  May ${15+i*3}, 2026 · 10:00 AM
-                </div>
-
-              </div>
-
-              <span class="badge ${
-                item[1] === "Approved"
-                  ? "green"
-                  : item[1] === "Pending"
-                  ? "orange"
-                  : "purple"
-              }">
-                ${item[1]}
-              </span>
-
-            </div>
-
-          `).join("")}
-
-        </div>
-
-      </div>
-
-    </div>
-
-  `;
+async function loadSocialCalendar(){
+ const box=document.getElementById("social-calendar-live");if(!box)return;box.innerHTML='<div class="muted">Loading social posts…</div>';
+ try{const admin=state.user?.role==="admin";const d=await apiRequest(admin?"/api/admin/social-posts":"/api/social-posts");const filter=document.getElementById("social-status-filter")?.value||"all";const rows=(d.posts||[]).filter(p=>filter==="all"||p.status===filter).sort((a,b)=>new Date(b.scheduled_at||b.created_at)-new Date(a.scheduled_at||a.created_at));
+ box.innerHTML=rows.length?'<div style="overflow-x:auto"><table class="table"><thead><tr>'+(admin?'<th>Client</th>':'')+'<th>Scheduled / Published</th><th>Platform</th><th>Post</th><th>Status</th><th>Likes</th><th>Comments</th><th>Views</th><th>Link</th></tr></thead><tbody>'+rows.map(p=>'<tr>'+(admin?'<td>'+esc(p.clients?.display_name||"—")+'</td>':'')+'<td>'+esc((p.published_at||p.scheduled_at||p.created_at)?new Date(p.published_at||p.scheduled_at||p.created_at).toLocaleString("en-IN"):"—")+'</td><td>'+esc(p.platform)+'</td><td><div style="max-width:320px;white-space:normal">'+esc(p.caption)+'</div></td><td>'+esc(p.status)+'</td><td>'+esc(p.likes_count??"—")+'</td><td>'+esc(p.comments_count??"—")+'</td><td>'+esc(p.views_count??"—")+'</td><td>'+(p.post_url?'<a href="'+esc(p.post_url)+'" target="_blank" rel="noopener">View post</a>':'—')+'</td></tr>').join('')+'</tbody></table></div>':'<div class="empty">No social posts recorded yet. Calendar records will appear here once added.</div>';
+ }catch(e){box.innerHTML='<div class="error-message">'+esc(e.message)+'</div>';}
 }
-
-
-/* =========================================================
-   CONTENT APPROVAL
-   ========================================================= */
+function social(){setTimeout(loadSocialCalendar,0);return title("Social Media",state.user?.role==="admin"?"Agency-wide calendar across all clients.":"Your past, scheduled and upcoming social posts.")+'<div class="card"><div class="section-head"><h3>Social Media Calendar</h3><select id="social-status-filter" onchange="loadSocialCalendar()" style="padding:9px;border:1px solid var(--line);border-radius:8px"><option value="all">All statuses</option><option value="draft">Draft</option><option value="pending_approval">Pending approval</option><option value="approved">Approved</option><option value="scheduled">Scheduled</option><option value="published">Published</option><option value="failed">Failed</option><option value="rejected">Rejected</option></select></div><div id="social-calendar-live"></div></div>';}
 
 function approval(){
 
