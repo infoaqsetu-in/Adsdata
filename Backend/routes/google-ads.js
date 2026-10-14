@@ -326,10 +326,20 @@ module.exports = (supabase, authenticateToken) => {
       }
       res.json({ success: true, synced: accounts.length, accounts });
     } catch (e) {
-      console.error("Google Ads account sync:", e.message);
+      console.error("Google Ads account sync:", {
+        message: e.message,
+        code: e.code,
+        details: e.details,
+        hint: e.hint,
+        httpStatus: e.httpStatus
+      });
       if (e.googleAds) return fail(res, 502, "Google Ads API rejected account sync: " + e.message, "GOOGLE_ADS_API_ERROR");
-      if (e.oauth) return fail(res, 409, "Reconnect Google Ads authorization.", "GOOGLE_ADS_REAUTH_REQUIRED");
-      fail(res, 500, "Unable to sync Google Ads accounts. Check manager ID and migration 007.");
+      if (e.oauth) return fail(res, 409, "Google Ads authorization needs reconnecting: " + e.message, "GOOGLE_ADS_REAUTH_REQUIRED");
+      const dbCode = e.code ? " (database code " + e.code + ")" : "";
+      const detail = e.message && !/fetch failed|timeout|aborted/i.test(e.message)
+        ? ": " + String(e.message).slice(0, 240)
+        : "";
+      return fail(res, 500, "Google Ads account sync failed" + dbCode + detail + ". Check Hostinger backend logs for the full error.", "GOOGLE_ADS_SYNC_FAILED");
     }
   });
 
