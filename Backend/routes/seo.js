@@ -5,7 +5,10 @@ let googleTokenCache=null;
 async function googleAccessToken(){
  const raw=process.env.GSC_SERVICE_ACCOUNT_JSON;
  if(!raw)throw new Error("Google Search Console is not configured. Add GSC_SERVICE_ACCOUNT_JSON in Hostinger.");
- const account=JSON.parse(raw);
+ let account;
+ try { account=JSON.parse(raw); }
+ catch(parseError) { throw new Error("GSC_SERVICE_ACCOUNT_JSON must contain the entire downloaded service-account JSON object, starting with { and including client_email and private_key. It looks like only a key value was pasted. Update the Hostinger variable with the full JSON file contents."); }
+ if(!account.client_email||!account.private_key)throw new Error("GSC_SERVICE_ACCOUNT_JSON is missing client_email or private_key. Paste the entire downloaded service-account JSON file into Hostinger.");
  if(googleTokenCache&&googleTokenCache.exp>Date.now()+60000)return googleTokenCache.token;
  const now=Math.floor(Date.now()/1000),head=b64({alg:"RS256",typ:"JWT"}),claim=b64({iss:account.client_email,scope:"https://www.googleapis.com/auth/webmasters.readonly",aud:"https://oauth2.googleapis.com/token",iat:now,exp:now+3600});
  const unsigned=head+"."+claim;
