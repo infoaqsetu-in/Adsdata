@@ -370,7 +370,7 @@ module.exports = (supabase, authenticateToken) => {
       const all = [];
       for (const account of mappings) {
         const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
-          query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.ctr, metrics.average_cpc FROM campaign WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
+          query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value, metrics.ctr, metrics.average_cpc FROM campaign WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
         });
         for (const row of result.results || []) {
           const m = row.metrics || {};
@@ -390,6 +390,8 @@ module.exports = (supabase, authenticateToken) => {
             clicks,
             spend: Number(spend.toFixed(2)),
             conversions: Number(m.conversions || 0),
+            conversionValue: Number(m.conversionsValue || 0),
+            conversionValuePerCost: spend ? Number((Number(m.conversionsValue || 0) / spend).toFixed(4)) : 0,
             ctr: Number(m.ctr || 0) * 100,
             averageCpc: Number(m.averageCpc || 0) / 1000000
           });
