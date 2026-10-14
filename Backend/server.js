@@ -28,7 +28,22 @@ const supabase = createClient(
 // Middleware
 // ======================================================
 
-app.use(cors());
+// Restrict cross-origin API access. Same-origin portal requests do not need CORS;
+// add any approved custom frontend origins to CORS_ORIGINS (comma-separated) in Hostinger.
+const allowedOrigins = new Set([
+  "https://darkgray-beaver-562547.hostingersite.com",
+  "http://localhost:5000",
+  "http://localhost:3000",
+  "http://127.0.0.1:5000",
+  ...(process.env.CORS_ORIGINS || "").split(",").map(origin => origin.trim()).filter(Boolean)
+]);
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+    return callback(new Error("Origin is not allowed by CORS"));
+  },
+  credentials: false
+}));
 // CSV rows are sent as JSON during admin imports (up to 1,000 rows / 5 MB file).
 app.use(express.json({ limit: "8mb" }));
 
