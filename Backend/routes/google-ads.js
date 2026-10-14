@@ -607,7 +607,7 @@ module.exports = (supabase, authenticateToken) => {
     try {
       if (req.user.role !== "admin") return fail(res, 403, "Administrator access is required.");
       const snapshotDate = String(req.body?.date || new Date(Date.now() - 86400000).toISOString().slice(0, 10));
-      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshotDate)) return fail(res, 400, "date must use YYYY-MM-DD.");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)) return fail(res, 400, "date must use YYYY-MM-DD.");
       const { data: mappings, error } = await supabase.from("google_ads_client_accounts").select("client_id,customer_id,customer_name,currency_code");
       if (error) throw error;
       const conn = await getConnection(supabase);
