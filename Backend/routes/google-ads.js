@@ -412,7 +412,7 @@ module.exports = (supabase, authenticateToken) => {
       if (req.user.role !== "admin" && clientId !== String(req.user.clientId)) return fail(res, 403, "You cannot access another client's Google Ads data");
       const startDate = String(req.query.startDate || "");
       const endDate = String(req.query.endDate || "");
-      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(startDate) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(endDate) || startDate > endDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate) {
         return fail(res, 400, "Valid startDate and endDate (YYYY-MM-DD) are required");
       }
       const { data: mappings, error } = await supabase.from("google_ads_client_accounts")
