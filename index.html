@@ -2242,31 +2242,41 @@ async function loadGoogleAdsCampaigns(){
   }
 }
 
-function googleAdsTrendChart(rows){
+function googleAdsTrendCharts(rows){
   const byDate = {};
   rows.forEach(r=>{
-    const d=String(r.date||"");
-    if(!d)return;
-    if(!byDate[d])byDate[d]={date:d,spend:0,clicks:0,impressions:0,conversions:0};
+    const d=String(r.date||""); if(!d)return;
+    if(!byDate[d])byDate[d]={date:d,spend:0,clicks:0,impressions:0,conversions:0,conversionValue:0};
     byDate[d].spend+=Number(r.spend||0);
     byDate[d].clicks+=Number(r.clicks||0);
     byDate[d].impressions+=Number(r.impressions||0);
     byDate[d].conversions+=Number(r.conversions||0);
+    byDate[d].conversionValue+=Number(r.conversionValue||0);
   });
   const points=Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date)).slice(-14);
   if(!points.length)return '<div class="empty" style="padding:24px">Chart data will appear when Google Ads returns daily performance.</div>';
-  const max=Math.max(1,...points.map(p=>p.spend));
-  return '<div style="display:flex;align-items:flex-end;gap:8px;min-height:190px;padding:16px 4px 0;overflow-x:auto">'+points.map(p=>{
-    const h=Math.max(4,p.spend/max*135);
-    return '<div title="'+esc(p.date+' · Spend '+fmtMoney(p.spend)+' · Clicks '+fmtNum(p.clicks)+' · Conversions '+fmtNum(p.conversions))+'" style="flex:1;min-width:24px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:175px;gap:7px"><div style="font-size:10px;color:var(--muted)">'+esc(fmtMoney(p.spend))+'</div><div style="height:'+h+'px;width:min(28px,90%);background:var(--green);border-radius:5px 5px 0 0"></div><div style="font-size:10px;color:var(--muted);white-space:nowrap">'+esc(p.date.slice(5))+'</div></div>';
-  }).join('')+'</div><p class="muted" style="font-size:12px;margin-bottom:0">Daily spend for the latest '+points.length+' dates with activity. Hover over a bar for spend, clicks and conversions.</p>';
+  const specs=[
+    {key:"clicks",label:"Clicks",color:"#2878e8",format:v=>fmtNum(v)},
+    {key:"impressions",label:"Impressions",color:"#16a085",format:v=>fmtNum(v)},
+    {key:"spend",label:"Cost",color:"#e67e22",format:v=>fmtMoney(v)},
+    {key:"conversionValue",label:"Conversion value",color:"#8e44ad",format:v=>fmtMoney(v)}
+  ];
+  return '<div class="grid two" style="gap:18px">'+specs.map(spec=>{
+    const max=Math.max(1,...points.map(p=>p[spec.key]));
+    const linePoints=points.map((p,i)=>{
+      const x=20+(i*(260/Math.max(1,points.length-1)));
+      const y=104-(p[spec.key]/max*78);
+      return x.toFixed(1)+','+y.toFixed(1);
+    }).join(' ');
+    return '<div style="border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>'+spec.label+'</b><span class="muted" style="font-size:12px">Daily · last '+points.length+' dates</span></div><svg viewBox="0 0 300 132" role="img" aria-label="'+spec.label+' trend chart" style="width:100%;height:auto;margin-top:8px"><line x1="20" y1="26" x2="280" y2="26" stroke="var(--line)"/><line x1="20" y1="65" x2="280" y2="65" stroke="var(--line)"/><line x1="20" y1="104" x2="280" y2="104" stroke="var(--line)"/><polyline points="'+linePoints+'" fill="none" stroke="'+spec.color+'" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'+points.map((p,i)=>{const x=20+(i*(260/Math.max(1,points.length-1)));const y=104-(p[spec.key]/max*78);return '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="3" fill="'+spec.color+'"><title>'+esc(p.date+' · '+spec.label+': '+spec.format(p[spec.key]))+'</title></circle>';}).join('')+'</svg><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>'+esc(points[0].date)+'</span><span>'+esc(points[points.length-1].date)+'</span></div></div>';
+  }).join('')+'</div>';
 }
 
 function googleAdsCampaigns(){
   if(!googleAdsReportState.data && !googleAdsReportState.loading && !googleAdsReportState.error) setTimeout(loadGoogleAdsCampaigns,0);
   const data=googleAdsReportState.data, rows=data?.campaigns||[], assetData=googleAdsReportState.assetsData, assets=assetData?.assets||[];
   const sum=key=>rows.reduce((n,r)=>n+Number(r[key]||0),0);
-  const impressions=sum("impressions"),clicks=sum("clicks"),spend=sum("spend"),conversions=sum("conversions");
+  const impressions=sum("impressions"),clicks=sum("clicks"),spend=sum("spend"),conversions=sum("conversions"),conversionValue=sum("conversionValue");
   const ctr=impressions?clicks/impressions*100:0,cpc=clicks?spend/clicks:0;
   const kpi=(label,value)=>'<div class="card kpi"><div class="label">'+esc(label)+'</div><div class="value">'+value+'</div></div>';
   const error=googleAdsReportState.error?'<div class="error-message" style="margin:14px 0">'+esc(googleAdsReportState.error)+'</div>':"";
@@ -2278,8 +2288,9 @@ function googleAdsCampaigns(){
     +error+notice
     +'<div class="card" style="margin-bottom:16px"><div class="section-head"><div><h3>Google Ads Performance</h3><div class="muted">'+esc(googleAdsReportState.startDate||"Last 30 days")+' to '+esc(googleAdsReportState.endDate||"")+'</div></div>'+refresh+'</div>'
     +(googleAdsReportState.loading?'<div class="muted" style="padding:18px 0">Loading Google Ads campaign and asset data…</div>':"")
-    +'<div class="grid three">'+kpi("Spend",fmtMoney(spend))+kpi("Impressions",fmtNum(impressions))+kpi("Clicks",fmtNum(clicks))+kpi("Conversions",fmtNum(conversions))+kpi("CTR",fmtPct(ctr))+kpi("Avg. CPC",fmtMoney(cpc))+'</div></div>'
-    +'<div class="grid two" style="margin-bottom:16px"><div class="card"><div class="section-head"><h3>Daily spend trend</h3><span class="badge green">Live API data</span></div>'+googleAdsTrendChart(rows)+'</div>'
+    +'<div class="grid three">'+kpi("Cost",fmtMoney(spend))+kpi("Impressions",fmtNum(impressions))+kpi("Clicks",fmtNum(clicks))+kpi("Conversions",fmtNum(conversions))+kpi("CTR",fmtPct(ctr))+kpi("Avg. CPC",fmtMoney(cpc))+kpi("Conversion value",fmtMoney(conversionValue))+kpi("Conv. value / cost",(spend? (conversionValue/spend).toFixed(2):"0.00"))+'</div></div>'
+    +'<div class="card" style="margin-bottom:16px"><div class="section-head"><h3>Performance trends</h3><span class="badge green">Live API data</span></div>'+googleAdsTrendCharts(rows)+'</div>'
+    +'<div class="grid two" style="margin-bottom:16px"><div class="card"><div class="section-head"><h3>Conversion value / cost</h3></div><div style="font-size:30px;font-weight:700">'+(spend?(conversionValue/spend).toFixed(2):"0.00")+'</div><p class="muted">Conversion value divided by ad cost for this date range.</p></div>'
     +'<div class="card"><h3>Performance snapshot</h3><div class="grid" style="gap:12px;margin-top:16px">'
     +[['Clicks',clicks],['Impressions',impressions],['Conversions',conversions]].map(([label,value])=>'<div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span>'+label+'</span><b>'+fmtNum(value)+'</b></div><div style="height:8px;background:#eef1f4;border-radius:20px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,(Number(value)/(Math.max(clicks,impressions,conversions,1)))*100)+'%;background:var(--green);border-radius:20px"></div></div></div>').join('')
     +'</div><p class="muted" style="font-size:12px">Bars compare the relative totals for this date range.</p></div></div>'
