@@ -691,7 +691,8 @@ const googleAdsReportState = { loading: false, error: "", assetError: "", data: 
 
 const clientPages = [
   "Dashboard",
-  "Campaigns",
+  "Meta Ads",
+  "Google Ads",
   "Leads",
   "Social Media",
   "Content Approval",
@@ -709,7 +710,8 @@ const icons = {
   "Users":"♙",
   "Integrations":"◈",
   "Dashboard":"⌂",
-  "Campaigns":"◈",
+  "Meta Ads":"◈",
+  "Google Ads":"▥",
   "Leads":"♙",
   "Social Media":"◫",
   "Content Approval":"✓",
@@ -1608,8 +1610,11 @@ function pageContent(){
     case "Dashboard":
       return dashboard();
 
-    case "Campaigns":
-      return campaigns();
+    case "Meta Ads":
+      return metaCampaigns();
+
+    case "Google Ads":
+      return googleAdsCampaigns();
 
     case "Leads":
       return leads();
@@ -2136,8 +2141,8 @@ function metaCampaigns(){
     </div>`;
 
   return title(
-    "Campaigns",
-    "Track Meta Ads and Google Ads performance."
+    "Meta Ads",
+    "Track Meta Ads campaign performance."
   )
   + metaConnectionBar()
   + dataBanner()
@@ -2269,7 +2274,7 @@ function googleAdsCampaigns(){
   const refresh='<button class="btn btn-light" onclick="googleAdsReportState.data=null;googleAdsReportState.assetsData=null;googleAdsReportState.error=\'\';googleAdsReportState.assetError=\'\';loadGoogleAdsCampaigns()" '+(googleAdsReportState.loading?'disabled':'')+'>'+(googleAdsReportState.loading?'Loading…':'Refresh report')+'</button>';
   const assetWarning=googleAdsReportState.assetError?'<div class="error-message">'+esc('Campaign data loaded, but asset data could not be loaded: '+googleAdsReportState.assetError)+'</div>':(assetData?.warnings?.length?'<p class="muted" style="font-size:12px">'+esc(assetData.warnings.join(' · '))+'</p>':"");
   const assetRows=assets.slice().sort((a,b)=>Number(b.impressions||0)-Number(a.impressions||0));
-  return title("Campaigns","Google Ads campaign, asset and performance analytics.")
+  return title("Google Ads","Campaign, asset and performance analytics.")
     +error+notice
     +'<div class="card" style="margin-bottom:16px"><div class="section-head"><div><h3>Google Ads Performance</h3><div class="muted">'+esc(googleAdsReportState.startDate||"Last 30 days")+' to '+esc(googleAdsReportState.endDate||"")+'</div></div>'+refresh+'</div>'
     +(googleAdsReportState.loading?'<div class="muted" style="padding:18px 0">Loading Google Ads campaign and asset data…</div>':"")
@@ -2287,10 +2292,7 @@ function googleAdsCampaigns(){
     +'</div>';
 }
 
-function campaigns(){
-  return '<div class="tabs"><button class="'+(state.campaignPlatform==="meta"?"active":"")+'" onclick="state.campaignPlatform=\'meta\';render()">Meta Ads</button><button class="'+(state.campaignPlatform==="google"?"active":"")+'" onclick="state.campaignPlatform=\'google\';googleAdsReportState.data=null;googleAdsReportState.error=\'\';loadGoogleAdsCampaigns()">Google Ads</button></div>'
-    + (state.campaignPlatform==="google" ? googleAdsCampaigns() : metaCampaigns());
-}
+
 
 /* =========================================================
    LEADS
