@@ -64,7 +64,7 @@ async function googleAdsRequest(accessToken, customerId, method, body) {
   };
   if (c.managerCustomerId) headers["login-customer-id"] = c.managerCustomerId;
   const response = await fetch(
-    `https://googleads.googleapis.com/${API_VERSION}/customers/${normalizeCustomerId(customerId)}:${method}`,
+    `https://googleads.googleapis.com/${API_VERSION}/customers/${normalizeCustomerId(customerId)}/${method}`,
     { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }
   );
   const result = await response.json();
