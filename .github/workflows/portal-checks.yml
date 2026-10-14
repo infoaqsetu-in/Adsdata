@@ -24,7 +24,6 @@ jobs:
             echo "Checking $file"
             node --check "$file"
           done
-          node --check index.html.js 2>/dev/null || true
       - name: Check inline frontend JavaScript syntax
         run: |
           python3 - <<'PY'
