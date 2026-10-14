@@ -687,7 +687,7 @@ const googleAdsState = {
   status: null, accounts: [], clients: [], selectedClientId: "",
   selectedAccountIds: [], loading: false, syncing: false, message: null
 };
-const googleAdsReportState = { loading: false, error: "", assetError: "", data: null, assetsData: null, startDate: "", endDate: "" };
+const googleAdsReportState = { loading: false, error: "", assetError: "", keywordError: "", searchError: "", negativeError: "", diagnosticsError: "", data: null, assetsData: null, keywordsData: null, searchData: null, negativeData: null, diagnosticsData: null, comparisonData: null, startDate: "", endDate: "" };
 
 const clientPages = [
   "Dashboard",
@@ -2225,14 +2225,32 @@ async function loadGoogleAdsCampaigns(){
     const clientId = state.client?.id || state.user?.clientId;
     if(!clientId) throw new Error("Your portal user is not linked to a client. Ask the agency administrator to check your client access.");
     const query = "?clientId="+encodeURIComponent(clientId)+"&startDate="+encodeURIComponent(startDate)+"&endDate="+encodeURIComponent(endDate);
-    const [campaignResult, assetResult] = await Promise.allSettled([
+    const startMs = new Date(startDate+"T00:00:00").getTime(), endMs = new Date(endDate+"T00:00:00").getTime();
+    const days = Math.max(1, Math.round((endMs-startMs)/86400000)+1);
+    const isoDate = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    const prevQuery = "?clientId="+encodeURIComponent(clientId)+"&startDate="+isoDate(new Date(startMs-days*86400000))+"&endDate="+isoDate(new Date(startMs-86400000));
+    const [campaignResult, assetResult, keywordResult, searchResult, negativeResult, diagnosticResult, comparisonResult] = await Promise.allSettled([
       apiRequest("/api/google-ads/campaigns"+query),
-      apiRequest("/api/google-ads/assets"+query)
+      apiRequest("/api/google-ads/assets"+query),
+      apiRequest("/api/google-ads/keywords"+query),
+      apiRequest("/api/google-ads/search-terms"+query),
+      apiRequest("/api/google-ads/negative-keywords?clientId="+encodeURIComponent(clientId)),
+      apiRequest("/api/google-ads/diagnostics?clientId="+encodeURIComponent(clientId)),
+      apiRequest("/api/google-ads/campaigns"+prevQuery)
     ]);
     if(campaignResult.status === "rejected") throw campaignResult.reason;
     googleAdsReportState.data = campaignResult.value;
     googleAdsReportState.assetsData = assetResult.status === "fulfilled" ? assetResult.value : null;
     googleAdsReportState.assetError = assetResult.status === "rejected" ? (assetResult.reason?.message || "Asset data is temporarily unavailable.") : "";
+    googleAdsReportState.keywordsData = keywordResult.status === "fulfilled" ? keywordResult.value : null;
+    googleAdsReportState.keywordError = keywordResult.status === "rejected" ? (keywordResult.reason?.message || "Keyword data unavailable.") : "";
+    googleAdsReportState.searchData = searchResult.status === "fulfilled" ? searchResult.value : null;
+    googleAdsReportState.searchError = searchResult.status === "rejected" ? (searchResult.reason?.message || "Search terms unavailable.") : "";
+    googleAdsReportState.negativeData = negativeResult.status === "fulfilled" ? negativeResult.value : null;
+    googleAdsReportState.negativeError = negativeResult.status === "rejected" ? (negativeResult.reason?.message || "Negative keywords unavailable.") : "";
+    googleAdsReportState.diagnosticsData = diagnosticResult.status === "fulfilled" ? diagnosticResult.value : null;
+    googleAdsReportState.diagnosticsError = diagnosticResult.status === "rejected" ? (diagnosticResult.reason?.message || "Diagnostics unavailable.") : "";
+    googleAdsReportState.comparisonData = comparisonResult.status === "fulfilled" ? comparisonResult.value : null;
   }catch(error){
     googleAdsReportState.error = error.message || "Unable to load Google Ads campaigns.";
     googleAdsReportState.data = null;
