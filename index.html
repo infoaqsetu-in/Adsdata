@@ -2300,7 +2300,7 @@ function downloadGoogleAdsCsv(kind){
   const rows=map[kind]||[]; if(!rows.length){alert('No rows available to export yet.');return;}
   const keys=[...new Set(rows.flatMap(row=>Object.keys(row)))];
   const cell=value=>'\"'+String(value==null?'':value).replace(/\"/g,'\"\"')+'\"';
-  const csv=[keys.map(cell).join(','),...rows.map(row=>keys.map(key=>cell(row[key])).join(','))].join('\\r\\n');
+  const csv=[keys.map(cell).join(','),...rows.map(row=>keys.map(key=>cell(row[key])).join(','))].join('\r\n');
   const link=document.createElement('a');link.href='data:text/csv;charset=utf-8,%EF%BB%BF'+encodeURIComponent(csv);link.download='google-ads-'+kind+'-'+(googleAdsReportState.startDate||'report')+'-'+(googleAdsReportState.endDate||'')+'.csv';document.body.appendChild(link);link.click();link.remove();
 }
 window.googleAdsSubtab = function(tab){
