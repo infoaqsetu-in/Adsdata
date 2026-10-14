@@ -404,5 +404,64 @@ module.exports = (supabase, authenticateToken) => {
     }
   });
 
+
+  router.get("/assets", async (req, res) => {
+    try {
+      const clientId = req.user.role === "admin" ? String(req.query.clientId || "") : String(req.user.clientId || "");
+      if (!clientId) return fail(res, 400, "clientId is required");
+      if (req.user.role !== "admin" && clientId !== String(req.user.clientId)) return fail(res, 403, "You cannot access another client's Google Ads data");
+      const startDate = String(req.query.startDate || "");
+      const endDate = String(req.query.endDate || "");
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(startDate) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(endDate) || startDate > endDate) {
+        return fail(res, 400, "Valid startDate and endDate (YYYY-MM-DD) are required");
+      }
+      const { data: mappings, error } = await supabase.from("google_ads_client_accounts")
+        .select("customer_id,customer_name,currency_code").eq("client_id", clientId);
+      if (error) throw error;
+      if (!mappings?.length) return res.json({ success: true, connected: false, assets: [], message: "No Google Ads account is assigned to this client." });
+      const conn = await getConnection(supabase);
+      if (!conn) return fail(res, 409, "Google Ads is not connected by the agency administrator", "GOOGLE_ADS_NOT_CONNECTED");
+      const accessToken = await refreshAccessToken(conn.refreshToken);
+      const all = [], warnings = [];
+      for (const account of mappings) {
+        try {
+          const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
+            query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, campaign.id, campaign.name, asset_group.id, asset_group.name, asset_group_asset.asset, asset_group_asset.field_type, asset_group_asset.status, asset_group_asset.performance_label, asset.type, asset.text_asset.text, asset.image_asset.full_size.url, segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.ctr FROM asset_group_asset WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
+          });
+          for (const row of result.results || []) {
+            const m = row.metrics || {}, asset = row.asset || {}, ag = row.assetGroupAsset || {};
+            all.push({
+              customerId: String(row.customer?.id || account.customer_id),
+              customerName: row.customer?.descriptiveName || account.customer_name,
+              campaignName: row.campaign?.name || "—",
+              assetGroupName: row.assetGroup?.name || "—",
+              assetId: String(asset.id || ""),
+              assetType: asset.type || ag.fieldType || "—",
+              fieldType: ag.fieldType || "—",
+              performanceLabel: ag.performanceLabel || "—",
+              status: ag.status || "—",
+              text: asset.textAsset?.text || "",
+              imageUrl: asset.imageAsset?.fullSize?.url || "",
+              date: row.segments?.date || "",
+              impressions: Number(m.impressions || 0),
+              clicks: Number(m.clicks || 0),
+              spend: Number((Number(m.costMicros || 0) / 1000000).toFixed(2)),
+              conversions: Number(m.conversions || 0),
+              ctr: Number(m.ctr || 0) * 100
+            });
+          }
+        } catch (assetError) {
+          warnings.push((account.customer_name || account.customer_id) + ": " + assetError.message);
+        }
+      }
+      res.json({ success: true, connected: true, startDate, endDate, assets: all, warnings, source: "Google Ads API" });
+    } catch (e) {
+      console.error("Google Ads assets:", e.message);
+      if (e.googleAds) return fail(res, 502, "Google Ads asset report error: " + e.message, "GOOGLE_ADS_ASSET_API_ERROR");
+      if (e.oauth) return fail(res, 409, "Google Ads authorization has expired or was revoked. Reconnect Google Ads.", "GOOGLE_ADS_REAUTH_REQUIRED");
+      fail(res, 500, "Unable to load Google Ads asset data.");
+    }
+  });
+
   return router;
 };
