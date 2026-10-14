@@ -192,8 +192,10 @@ module.exports = (supabase, authenticateToken) => {
     try {
       const conn = await getConnection(supabase);
       if (!conn) return fail(res, 409, "Connect Google Ads first", "GOOGLE_ADS_NOT_CONNECTED");
+      const managerId = config().managerCustomerId || conn.manager_customer_id;
+      if (!managerId) return fail(res, 400, "Set GOOGLE_ADS_MANAGER_CUSTOMER_ID in Hostinger without hyphens");
       const accessToken = await refreshAccessToken(conn.refreshToken);
-      const result = await googleAdsRequest(accessToken, config().managerCustomerId || conn.manager_customer_id, "googleAds:search", {
+      const result = await googleAdsRequest(accessToken, managerId, "googleAds:search", {
         query: "SELECT customer_client.id, customer_client.descriptive_name, customer_client.currency_code, customer_client.manager, customer_client.status FROM customer_client WHERE customer_client.status = 'ENABLED' ORDER BY customer_client.descriptive_name"
       });
       const accounts = (result.results || []).map(r => ({
