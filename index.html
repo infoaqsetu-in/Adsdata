@@ -2308,11 +2308,16 @@ window.googleAdsSubtab = function(tab){
   panels.forEach(el=>{
     const match = el.getAttribute("data-google-subtab") === tab;
     el.hidden = !match;
-    // Restore each panel's original layout (grid/flex/block) when shown.
-    // Forcing display:block here breaks grid layouts and can collapse the tab content.
-    el.style.removeProperty("display");
-    el.style.removeProperty("display-important");
-    if(match) el.removeAttribute("hidden");
+    // Some portal CSS rules override the browser's [hidden] display behavior,
+    // so explicitly hide inactive panels. Preserve grid layout for grid panels.
+    if(!match){
+      el.style.setProperty("display","none","important");
+    }else{
+      el.style.removeProperty("display");
+      el.style.removeProperty("display-important");
+      el.style.setProperty("display",el.classList.contains("grid") ? "grid" : "block","important");
+      el.removeAttribute("hidden");
+    }
   });
   document.querySelectorAll("[data-google-tab]").forEach(el=>{
     const active = el.getAttribute("data-google-tab") === tab;
@@ -2340,7 +2345,7 @@ function googleAdsCampaigns(){
     +'<div class="card" data-google-subtab="overview" style="margin-bottom:16px"><div class="section-head"><div><h3>Report controls</h3><div class="muted">Select reporting dates and export your data.</div></div>'+refresh+'</div><div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-top:12px"><label>Start date<input type="date" value="'+esc(googleAdsReportState.startDate||"")+'" onchange="googleAdsReportState.startDate=this.value;googleAdsReportState.data=null;loadGoogleAdsCampaigns()"></label><label>End date<input type="date" value="'+esc(googleAdsReportState.endDate||"")+'" onchange="googleAdsReportState.endDate=this.value;googleAdsReportState.data=null;loadGoogleAdsCampaigns()"></label><button class="btn btn-light" onclick="downloadGoogleAdsCsv(&#39;campaigns&#39;)">Export campaigns CSV</button><button class="btn btn-light" onclick="downloadGoogleAdsCsv(&#39;keywords&#39;)">Export keywords CSV</button><button class="btn btn-light" onclick="downloadGoogleAdsCsv(&#39;searchTerms&#39;)">Export search terms CSV</button></div></div>'
     +'<div class="card" style="margin-bottom:16px"><div class="section-head"><div><h3>Google Ads Performance</h3><div class="muted">'+esc(googleAdsReportState.startDate||"Last 30 days")+' to '+esc(googleAdsReportState.endDate||"")+'</div></div></div>'
     +(googleAdsReportState.loading?'<div class="muted" style="padding:18px 0">Loading Google Ads campaign and asset data…</div>':"")
-    +'<div class="grid three">'+kpi("Cost",fmtMoney(spend))+kpi("Impressions",fmtNum(impressions))+kpi("Clicks",fmtNum(clicks))+kpi("Conversions",fmtNum(conversions))+kpi("CTR",fmtPct(ctr))+kpi("Avg. CPC",fmtMoney(cpc))+kpi("Conversion value",fmtMoney(conversionValue))+kpi("Conv. value / cost",(spend? (conversionValue/spend).toFixed(2):"0.00"))+'</div></div>'
+    +'<div class="card" data-google-subtab="overview" style="margin-bottom:16px"><div class="section-head"><div><h3>Google Ads Performance</h3><div class="muted">'+esc(googleAdsReportState.startDate||"Last 30 days")+' to '+esc(googleAdsReportState.endDate||"")+'</div></div></div><div class="grid three">'+kpi("Cost",fmtMoney(spend))+kpi("Impressions",fmtNum(impressions))+kpi("Clicks",fmtNum(clicks))+kpi("Conversions",fmtNum(conversions))+kpi("CTR",fmtPct(ctr))+kpi("Avg. CPC",fmtMoney(cpc))+kpi("Conversion value",fmtMoney(conversionValue))+kpi("Conv. value / cost",(spend? (conversionValue/spend).toFixed(2):"0.00"))+'</div></div></div>'
     +'<div class="card" data-google-subtab="daily" style="margin-bottom:16px"><div class="section-head"><h3>Performance trends</h3><span class="badge green">Live API data</span></div>'+googleAdsTrendCharts(rows)+'</div>'
     +'<div class="grid" data-google-subtab="overview" style="margin-bottom:16px" style="margin-bottom:16px"><div class="card"><div class="section-head"><h3>Conversion value / cost</h3></div><div style="font-size:30px;font-weight:700">'+(spend?(conversionValue/spend).toFixed(2):"0.00")+'</div><p class="muted">Conversion value divided by ad cost for this date range.</p></div>'
     +'<div class="card"><h3>Performance snapshot</h3><div class="grid" style="gap:12px;margin-top:16px">'
