@@ -61,7 +61,17 @@ module.exports=(supabase,authenticateToken)=>{
    if(!setting.site_url)return res.status(400).json({success:false,message:"Set the client's verified website URL first"});
    const endDate=new Date();endDate.setDate(endDate.getDate()-3);const startDate=new Date(endDate);startDate.setDate(startDate.getDate()-27);
    const date=x=>x.toISOString().slice(0,10),metricDate=date(endDate),results=[];
-   if(process.env.GSC_SERVICE_ACCOUNT_JSON){try{const payload=await searchConsole(setting.site_url,date(startDate),metricDate);const {error:e}=await supabase.from("seo_snapshots").upsert({client_id:clientId,provider:"search_console",metric_date:metricDate,payload},{onConflict:"client_id,provider,metric_date"});if(e)throw e;results.push({provider:"search_console",success:true});}catch(e){results.push({provider:"search_console",success:false,message:e.message});}}
+   const previousEnd=new Date(startDate);previousEnd.setDate(previousEnd.getDate()-1);
+   const previousStart=new Date(previousEnd);previousStart.setDate(previousStart.getDate()-27);
+   if(process.env.GSC_SERVICE_ACCOUNT_JSON){try{
+    const [current,previous]=await Promise.all([
+     searchConsole(setting.site_url,date(startDate),metricDate),
+     searchConsole(setting.site_url,date(previousStart),date(previousEnd))
+    ]);
+    const payload={...current,previous};
+    const {error:e}=await supabase.from("seo_snapshots").upsert({client_id:clientId,provider:"search_console",metric_date:metricDate,payload},{onConflict:"client_id,provider,metric_date"});if(e)throw e;
+    results.push({provider:"search_console",success:true,comparison:true});
+   }catch(e){results.push({provider:"search_console",success:false,message:e.message});}}
    else results.push({provider:"search_console",success:false,message:"GSC_SERVICE_ACCOUNT_JSON is not configured"});
    res.json({success:results.some(r=>r.success),date:metricDate,results});
   }catch(e){console.error("SEO sync:",e.message);res.status(500).json({success:false,message:"SEO sync failed"});}
