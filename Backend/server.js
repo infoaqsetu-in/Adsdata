@@ -53,6 +53,7 @@ const metaRoutes = require("./routes/meta");
 const adminRoutes = require("./routes/admin");
 const socialRoutes = require("./routes/social");
 const seoRoutes = require("./routes/seo");
+const googleAdsRoutes = require("./routes/google-ads");
 
 
 app.use(
@@ -79,6 +80,7 @@ app.use(
 );
 app.use("/api/social-posts", socialRoutes(supabase, authenticateToken));
 app.use("/api/seo", seoRoutes(supabase, authenticateToken));
+app.use("/api/google-ads", googleAdsRoutes(supabase, authenticateToken));
 // ======================================================
 // Health Check
 // ======================================================
