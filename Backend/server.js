@@ -52,6 +52,7 @@ const dashboardRoutes = require("./routes/dashboard");
 const metaRoutes = require("./routes/meta");
 const adminRoutes = require("./routes/admin");
 const socialRoutes = require("./routes/social");
+const seoRoutes = require("./routes/seo");
 
 
 app.use(
@@ -77,6 +78,7 @@ app.use(
   adminRoutes(supabase, authenticateToken)
 );
 app.use("/api/social-posts", socialRoutes(supabase, authenticateToken));
+app.use("/api/seo", seoRoutes(supabase, authenticateToken));
 // ======================================================
 // Health Check
 // ======================================================
