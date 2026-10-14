@@ -459,6 +459,99 @@ module.exports = (supabase, authenticateToken) => {
     }
   });
 
+
+  router.get("/search-terms", async (req, res) => {
+    try {
+      const clientId = req.user.role === "admin" ? String(req.query.clientId || "") : String(req.user.clientId || "");
+      if (!clientId) return fail(res, 400, "clientId is required");
+      if (req.user.role !== "admin" && clientId !== String(req.user.clientId)) return fail(res, 403, "You cannot access another client's Google Ads data");
+      const startDate = String(req.query.startDate || ""), endDate = String(req.query.endDate || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate) return fail(res, 400, "Valid startDate and endDate are required");
+      const { data: mappings, error } = await supabase.from("google_ads_client_accounts").select("customer_id,customer_name").eq("client_id", clientId);
+      if (error) throw error;
+      if (!mappings?.length) return res.json({ success: true, connected: false, searchTerms: [], warnings: [] });
+      const conn = await getConnection(supabase);
+      if (!conn) return fail(res, 409, "Google Ads is not connected", "GOOGLE_ADS_NOT_CONNECTED");
+      const accessToken = await refreshAccessToken(conn.refreshToken), searchTerms = [], warnings = [];
+      for (const account of mappings) {
+        try {
+          const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", { query: `SELECT campaign.name, ad_group.name, search_term_view.search_term, segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.ctr FROM search_term_view WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY metrics.impressions DESC LIMIT 1000` });
+          for (const row of result.results || []) {
+            const m = row.metrics || {};
+            searchTerms.push({ customerId: account.customer_id, customerName: account.customer_name || "", campaignName: row.campaign?.name || "—", adGroupName: row.adGroup?.name || "—", searchTerm: row.searchTermView?.searchTerm || "—", date: row.segments?.date || "", impressions: Number(m.impressions || 0), clicks: Number(m.clicks || 0), spend: Number((Number(m.costMicros || 0) / 1000000).toFixed(2)), conversions: Number(m.conversions || 0), ctr: Number(m.ctr || 0) * 100 });
+          }
+        } catch (e) { warnings.push((account.customer_name || account.customer_id) + ": " + e.message); }
+      }
+      res.json({ success: true, connected: true, startDate, endDate, searchTerms, warnings, source: "Google Ads API" });
+    } catch (e) {
+      console.error("Google Ads search terms:", e.message);
+      if (e.googleAds) return fail(res, 502, "Google Ads search terms error: " + e.message, "GOOGLE_ADS_SEARCH_TERMS_ERROR");
+      if (e.oauth) return fail(res, 409, "Reconnect Google Ads authorization.", "GOOGLE_ADS_REAUTH_REQUIRED");
+      fail(res, 500, "Unable to load search terms.");
+    }
+  });
+
+  router.get("/negative-keywords", async (req, res) => {
+    try {
+      const clientId = req.user.role === "admin" ? String(req.query.clientId || "") : String(req.user.clientId || "");
+      if (!clientId) return fail(res, 400, "clientId is required");
+      if (req.user.role !== "admin" && clientId !== String(req.user.clientId)) return fail(res, 403, "You cannot access another client's Google Ads data");
+      const { data: mappings, error } = await supabase.from("google_ads_client_accounts").select("customer_id,customer_name").eq("client_id", clientId);
+      if (error) throw error;
+      if (!mappings?.length) return res.json({ success: true, connected: false, negativeKeywords: [], warnings: [] });
+      const conn = await getConnection(supabase);
+      if (!conn) return fail(res, 409, "Google Ads is not connected", "GOOGLE_ADS_NOT_CONNECTED");
+      const accessToken = await refreshAccessToken(conn.refreshToken), negativeKeywords = [], warnings = [];
+      for (const account of mappings) {
+        try {
+          const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", { query: "SELECT campaign.name, campaign_criterion.keyword.text, campaign_criterion.keyword.match_type, campaign_criterion.status FROM campaign_criterion WHERE campaign_criterion.negative = TRUE LIMIT 1000" });
+          for (const row of result.results || []) {
+            const criterion = row.campaignCriterion || {};
+            negativeKeywords.push({ customerId: account.customer_id, customerName: account.customer_name || "", campaignName: row.campaign?.name || "Account-level", keyword: criterion.keyword?.text || "—", matchType: criterion.keyword?.matchType || "—", status: criterion.status || "—" });
+          }
+        } catch (e) { warnings.push((account.customer_name || account.customer_id) + ": " + e.message); }
+      }
+      res.json({ success: true, connected: true, negativeKeywords, warnings, source: "Google Ads API" });
+    } catch (e) {
+      console.error("Google Ads negative keywords:", e.message);
+      if (e.googleAds) return fail(res, 502, "Google Ads negative-keyword error: " + e.message, "GOOGLE_ADS_NEGATIVE_KEYWORDS_ERROR");
+      if (e.oauth) return fail(res, 409, "Reconnect Google Ads authorization.", "GOOGLE_ADS_REAUTH_REQUIRED");
+      fail(res, 500, "Unable to load negative keywords.");
+    }
+  });
+
+  router.get("/diagnostics", async (req, res) => {
+    try {
+      const clientId = req.user.role === "admin" ? String(req.query.clientId || "") : String(req.user.clientId || "");
+      if (!clientId) return fail(res, 400, "clientId is required");
+      if (req.user.role !== "admin" && clientId !== String(req.user.clientId)) return fail(res, 403, "You cannot access another client's Google Ads data");
+      const { data: mappings, error } = await supabase.from("google_ads_client_accounts").select("customer_id,customer_name,currency_code").eq("client_id", clientId);
+      if (error) throw error;
+      const conn = await getConnection(supabase);
+      const accounts = [];
+      if (conn && mappings?.length) {
+        const accessToken = await refreshAccessToken(conn.refreshToken);
+        for (const account of mappings) {
+          try {
+            const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", { query: "SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone, customer.manager, customer.test_account FROM customer LIMIT 1" });
+            const customer = result.results?.[0]?.customer || {};
+            accounts.push({ customerId: account.customer_id, name: customer.descriptiveName || account.customer_name || account.customer_id, currency: customer.currencyCode || account.currency_code || "", timeZone: customer.timeZone || "", isManager: Boolean(customer.manager), isTestAccount: Boolean(customer.testAccount), status: "Accessible" });
+          } catch (e) { accounts.push({ customerId: account.customer_id, name: account.customer_name || account.customer_id, status: "Needs attention", error: e.message }); }
+        }
+      }
+      res.json({ success: true, connected: Boolean(conn), assignedAccountCount: mappings?.length || 0, accounts, checks: [
+        { name: "OAuth connection", status: conn ? "Connected" : "Not connected" },
+        { name: "Assigned accounts", status: mappings?.length ? "Configured" : "No account assigned" },
+        { name: "Google Ads API access", status: accounts.length && accounts.every(a => a.status === "Accessible") ? "Accessible" : accounts.length ? "Check account errors" : "Not tested" }
+      ] });
+    } catch (e) {
+      console.error("Google Ads diagnostics:", e.message);
+      if (e.googleAds) return fail(res, 502, "Google Ads diagnostics error: " + e.message, "GOOGLE_ADS_DIAGNOSTICS_ERROR");
+      if (e.oauth) return fail(res, 409, "Reconnect Google Ads authorization.", "GOOGLE_ADS_REAUTH_REQUIRED");
+      fail(res, 500, "Unable to load Google Ads diagnostics.");
+    }
+  });
+
   router.get("/assets", async (req, res) => {
     try {
       const clientId = req.user.role === "admin" ? String(req.query.clientId || "") : String(req.user.clientId || "");
