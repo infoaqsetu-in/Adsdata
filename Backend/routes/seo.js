@@ -1,4 +1,5 @@
 const express=require("express");
+const crypto=require("crypto");
 const {requireRole}=require("../middleware/roles");
 const router=express.Router();
 const b64=o=>Buffer.from(JSON.stringify(o)).toString("base64url");
