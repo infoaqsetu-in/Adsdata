@@ -45,7 +45,7 @@ module.exports = (supabase, authenticateToken) => {
         return res.status(403).json({ success:false, message:"This account is inactive" });
       }
 
-      const role = user.role === "client_admin" ? "admin" : user.role;
+      const role = ["client_admin", "client_user"].includes(user.role) ? "client" : user.role;
       const clientIdForToken = role === "admin" ? null : user.client_id;
       if (role !== "admin" && !clientIdForToken) {
         return res.status(403).json({ success:false, message:"This account is not assigned to a client" });
@@ -87,7 +87,7 @@ module.exports = (supabase, authenticateToken) => {
       const passwordValid = await bcrypt.compare(password, user.password_hash);
       if (!passwordValid) return res.status(401).json({ success:false, message:"Invalid email or password" });
 
-      const role = user.role === "client_admin" ? "admin" : user.role;
+      const role = ["client_admin", "client_user"].includes(user.role) ? "client" : user.role;
       const clientId = role === "admin" ? null : user.client_id;
 
       if (role !== "admin" && !clientId) {
