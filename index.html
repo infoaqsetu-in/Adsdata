@@ -2195,194 +2195,26 @@ function approval(){
    SEO
    ========================================================= */
 
-function chooseSeoDateRange(){
- const start=prompt("Start date (YYYY-MM-DD):","2026-05-01");if(start===null)return;
- const end=prompt("End date (YYYY-MM-DD):","2026-05-31");if(end===null)return;
- if(!start||!end||start>end){alert("Enter valid dates, with start on or before end.");return;}
- state.seoDateRange=start+" – "+end;render();
+async function loadSeoStatus(){
+ try{const d=await apiRequest("/api/seo/status");state.seoStatus=d;state.seoEnabled=Boolean(d.enabled);if(!state.seoEnabled&&state.page==="SEO")state.page="Dashboard";}
+ catch(e){state.seoStatus={error:e.message};state.seoEnabled=false;}
 }
-
+async function loadSeoData(){
+ state.seoLoading=true;render();
+ try{state.seoData=await apiRequest("/api/seo/data");}
+ catch(e){state.seoData={error:e.message,snapshots:[]};}
+ state.seoLoading=false;render();
+}
+function chooseSeoDateRange(){alert("The initial integration syncs the latest available 28-day Search Console query window and a Semrush keyword snapshot.");}
 function seo(){
-
-  return title(
-    "SEO Overview",
-    "Organic search performance and work completed.",
-    `<button class="btn btn-light" onclick="chooseSeoDateRange()">
-      ${esc(state.seoDateRange)} ▾
-    </button>`
-  )
-
-  + `
-
-    <div class="card hero">
-
-      <div class="section-head">
-
-        <div>
-
-          <h3>
-            Organic Traffic
-          </h3>
-
-          <div class="muted">
-            Google Search Console
-          </div>
-
-        </div>
-
-        <b style="font-size:29px">
-          18,420
-        </b>
-
-      </div>
-
-    </div>
-
-    <div style="height:16px"></div>
-
-    <div class="grid three">
-
-      ${[
-        ["Keywords Up","124"],
-        ["Avg. Position","11.4"],
-        ["Impressions","642K"],
-        ["CTR","2.87%"]
-      ].map(item => `
-
-        <div class="card kpi">
-
-          <div class="label">
-            ${item[0]}
-          </div>
-
-          <div class="value">
-            ${item[1]}
-          </div>
-
-          <div class="up">
-            ↑ 8.3%
-          </div>
-
-        </div>
-
-      `).join("")}
-
-    </div>
-
-    <div style="height:16px"></div>
-
-    <div class="grid two">
-
-      <div class="card">
-
-        <div class="section-head">
-
-          <h3>
-            Top Performing Keywords
-          </h3>
-
-          <button class="btn btn-light" onclick="state.seoShowAllKeywords=!state.seoShowAllKeywords;render()">
-            ${state.seoShowAllKeywords ? "Show Less" : "View All"}
-          </button>
-
-        </div>
-
-        <table class="table">
-
-          <thead>
-
-            <tr>
-              <th>Keyword</th>
-              <th>Position</th>
-              <th>Change</th>
-            </tr>
-
-          </thead>
-
-          <tbody>
-
-            ${([
-              ["digital marketing agency","5","+3"],
-              ["seo agency ahmedabad","8","+2"],
-              ["social media agency","12","+5"],
-              ["digital marketing company ahmedabad","14","+4"],
-              ["SEO services Ahmedabad","16","+2"],
-              ["social media marketing agency","18","+1"],
-              ["website development Ahmedabad","21","+3"],
-              ["online marketing services","24","+2"]
-            ].slice(0,state.seoShowAllKeywords?8:3)).map(item => `
-
-              <tr>
-
-                <td>
-                  ${item[0]}
-                </td>
-
-                <td>
-                  ${item[1]}
-                </td>
-
-                <td class="up">
-                  ↑ ${item[2].substring(1)}
-                </td>
-
-              </tr>
-
-            `).join("")}
-
-          </tbody>
-
-        </table>
-
-      </div>
-
-
-      <div class="card">
-
-        <div class="section-head">
-
-          <h3>
-            AQ Setu Work Completed
-          </h3>
-
-        </div>
-
-        <div class="list">
-
-          ${[
-            "8 blogs published",
-            "24 backlinks built",
-            "14 technical fixes",
-            "35 keywords optimized"
-          ].map(item => `
-
-            <div class="list-item">
-
-              <span>
-                ✓ ${item}
-              </span>
-
-              <span class="badge green">
-                Done
-              </span>
-
-            </div>
-
-          `).join("")}
-
-        </div>
-
-      </div>
-
-    </div>
-
-  `;
+ setTimeout(()=>{if(!state.seoData&&!state.seoLoading)loadSeoData();},0);
+ if(!state.seoEnabled)return title("SEO Overview","SEO service is not enabled for this account.")+'<div class="card">SEO reporting is available only to clients who purchased SEO services. Contact AQ Setu to enable it.</div>';
+ const d=state.seoData||{},snaps=d.snapshots||[],gsc=snaps.find(x=>x.provider==="search_console"),sem=snaps.find(x=>x.provider==="semrush"),p=gsc?.payload||{},queries=p.queries||[],keywords=sem?.payload?.keywords||[];
+ return title("SEO Overview","Website performance from Google Search Console and Semrush.",'<button class="btn btn-light" onclick="loadSeoData()">Refresh</button>')
+ + '<div class="card" style="margin-bottom:16px"><b>Website:</b> '+esc(d.siteUrl||state.seoStatus?.siteUrl||"Not configured")+'<p class="muted">Metrics appear only after an administrator configures credentials, verifies website access, and runs a sync.</p>'+(state.seoLoading?'<p>Loading SEO data…</p>':'')+(d.error?'<p class="error-message">'+esc(d.error)+'</p>':'')+'</div>'
+ + '<div class="grid three">'+[['Search clicks',gsc?fmtNum(p.clicks):"Not synced"],['Impressions',gsc?fmtNum(p.impressions):"Not synced"],['Average position',gsc&&p.averagePosition!=null?Number(p.averagePosition).toFixed(1):"Not synced"],['CTR',gsc&&p.ctr!=null?(Number(p.ctr)*100).toFixed(2)+"%":"Not synced"],['Semrush keywords',sem?fmtNum(sem.payload?.keywordCount):"Not synced"],['Data status',(gsc?"GSC synced":"GSC pending")+" · "+(sem?"Semrush synced":"Semrush pending")]].map(x=>'<div class="card kpi"><div class="label">'+esc(x[0])+'</div><div class="value" style="font-size:20px">'+esc(x[1])+'</div></div>').join('')+'</div>'
+ + '<div class="grid two" style="margin-top:16px"><div class="card"><h3>Search Console queries</h3>'+(queries.length?'<div style="overflow-x:auto"><table class="table"><thead><tr><th>Query</th><th>Clicks</th><th>Impressions</th><th>Position</th></tr></thead><tbody>'+queries.slice(0,state.seoShowAllKeywords?100:10).map(q=>'<tr><td>'+esc(q.query)+'</td><td>'+fmtNum(q.clicks)+'</td><td>'+fmtNum(q.impressions)+'</td><td>'+Number(q.position||0).toFixed(1)+'</td></tr>').join('')+'</tbody></table><button class="btn btn-light" onclick="state.seoShowAllKeywords=!state.seoShowAllKeywords;render()">'+(state.seoShowAllKeywords?'Show less':'View all queries')+'</button>':'<p class="muted">No Search Console data synced yet.</p>')+'</div><div class="card"><h3>Semrush organic keywords</h3>'+(keywords.length?'<div style="overflow-x:auto"><table class="table"><thead><tr><th>Keyword</th><th>Position</th><th>Volume</th></tr></thead><tbody>'+keywords.slice(0,50).map(k=>'<tr><td>'+esc(k.Ph||"—")+'</td><td>'+esc(k.Po||"—")+'</td><td>'+esc(k.Nq||"—")+'</td></tr>').join('')+'</tbody></table>':'<p class="muted">No Semrush data synced yet.</p>')+'</div></div>';
 }
-
-
-/* =========================================================
-   REPORTS
-   ========================================================= */
 
 function downloadReport(reportType){
  const d=state.dashboard||{},m=d.metrics||{},campaigns=d.campaigns||[];
