@@ -407,6 +407,58 @@ module.exports = (supabase, authenticateToken) => {
   });
 
 
+
+  router.get("/keywords", async (req, res) => {
+    try {
+      const clientId = req.user.role === "admin" ? String(req.query.clientId || "") : String(req.user.clientId || "");
+      if (!clientId) return fail(res, 400, "clientId is required");
+      if (req.user.role !== "admin" && clientId !== String(req.user.clientId)) return fail(res, 403, "You cannot access another client's Google Ads data");
+      const startDate = String(req.query.startDate || "");
+      const endDate = String(req.query.endDate || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate) return fail(res, 400, "Valid startDate and endDate (YYYY-MM-DD) are required");
+      const { data: mappings, error } = await supabase.from("google_ads_client_accounts").select("customer_id,customer_name,currency_code").eq("client_id", clientId);
+      if (error) throw error;
+      if (!mappings?.length) return res.json({ success: true, connected: false, keywords: [], message: "No Google Ads account is assigned to this client." });
+      const conn = await getConnection(supabase);
+      if (!conn) return fail(res, 409, "Google Ads is not connected by the agency administrator", "GOOGLE_ADS_NOT_CONNECTED");
+      const accessToken = await refreshAccessToken(conn.refreshToken);
+      const all = [], warnings = [];
+      for (const account of mappings) {
+        try {
+          const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
+            query: `SELECT campaign.name, ad_group.name, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ad_group_criterion.status, segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.ctr FROM keyword_view WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY metrics.impressions DESC`
+          });
+          for (const row of result.results || []) {
+            const m = row.metrics || {}, criterion = row.adGroupCriterion || {};
+            all.push({
+              customerId: String(row.customer?.id || account.customer_id),
+              customerName: account.customer_name || "",
+              campaignName: row.campaign?.name || "—",
+              adGroupName: row.adGroup?.name || "—",
+              keyword: criterion.keyword?.text || "—",
+              matchType: criterion.keyword?.matchType || "—",
+              status: criterion.status || "—",
+              date: row.segments?.date || "",
+              impressions: Number(m.impressions || 0),
+              clicks: Number(m.clicks || 0),
+              spend: Number((Number(m.costMicros || 0) / 1000000).toFixed(2)),
+              conversions: Number(m.conversions || 0),
+              ctr: Number(m.ctr || 0) * 100
+            });
+          }
+        } catch (keywordError) {
+          warnings.push((account.customer_name || account.customer_id) + ": " + keywordError.message);
+        }
+      }
+      res.json({ success: true, connected: true, startDate, endDate, keywords: all, warnings, source: "Google Ads API" });
+    } catch (e) {
+      console.error("Google Ads keywords:", e.message);
+      if (e.googleAds) return fail(res, 502, "Google Ads keyword report error: " + e.message, "GOOGLE_ADS_KEYWORD_API_ERROR");
+      if (e.oauth) return fail(res, 409, "Google Ads authorization has expired or was revoked. Reconnect Google Ads.", "GOOGLE_ADS_REAUTH_REQUIRED");
+      fail(res, 500, "Unable to load Google Ads keyword data.");
+    }
+  });
+
   router.get("/assets", async (req, res) => {
     try {
       const clientId = req.user.role === "admin" ? String(req.query.clientId || "") : String(req.user.clientId || "");
