@@ -552,6 +552,46 @@ module.exports = (supabase, authenticateToken) => {
     }
   });
 
+  router.post("/snapshots/sync", async (req, res) => {
+    try {
+      if (req.user.role !== "admin") return fail(res, 403, "Administrator access is required.");
+      const snapshotDate = String(req.body?.date || new Date(Date.now() - 86400000).toISOString().slice(0, 10));
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshotDate)) return fail(res, 400, "date must use YYYY-MM-DD.");
+      const { data: mappings, error } = await supabase.from("google_ads_client_accounts").select("client_id,customer_id,customer_name,currency_code");
+      if (error) throw error;
+      const conn = await getConnection(supabase);
+      if (!conn) return fail(res, 409, "Google Ads is not connected.", "GOOGLE_ADS_NOT_CONNECTED");
+      const accessToken = await refreshAccessToken(conn.refreshToken);
+      let saved = 0; const warnings = [];
+      for (const account of mappings || []) {
+        try {
+          const query = "SELECT customer.currency_code, campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.conversions_value, metrics.ctr, metrics.average_cpc FROM campaign WHERE segments.date = '" + snapshotDate + "'";
+          const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", { query });
+          const rows = (result.results || []).map(row => { const m = row.metrics || {}; const spend = Number(m.costMicros || 0) / 1000000; return { client_id: account.client_id, customer_id: String(account.customer_id), campaign_id: String(row.campaign?.id || ""), snapshot_date: snapshotDate, campaign_name: row.campaign?.name || "", campaign_status: row.campaign?.status || "", channel: row.campaign?.advertisingChannelType || "", currency_code: row.customer?.currencyCode || account.currency_code || "", impressions: Number(m.impressions || 0), clicks: Number(m.clicks || 0), spend: Number(spend.toFixed(2)), conversions: Number(m.conversions || 0), conversion_value: Number(m.conversionsValue || 0), ctr: Number(m.ctr || 0) * 100, average_cpc: Number((Number(m.averageCpc || 0) / 1000000).toFixed(4)), synced_at: new Date().toISOString() }; });
+          if (rows.length) { const { error: saveError } = await supabase.from("google_ads_daily_snapshots").upsert(rows, { onConflict: "client_id,customer_id,campaign_id,snapshot_date" }); if (saveError) throw saveError; saved += rows.length; }
+        } catch (e) { warnings.push((account.customer_name || account.customer_id) + ": " + e.message); }
+      }
+      res.json({ success: true, date: snapshotDate, rowsSaved: saved, warnings });
+    } catch (e) {
+      console.error("Google Ads snapshot sync:", e.message);
+      if (e.googleAds) return fail(res, 502, "Google Ads snapshot sync failed: " + e.message, "GOOGLE_ADS_SNAPSHOT_SYNC_ERROR");
+      if (e.oauth) return fail(res, 409, "Reconnect Google Ads authorization.", "GOOGLE_ADS_REAUTH_REQUIRED");
+      fail(res, 500, "Unable to sync Google Ads snapshots.");
+    }
+  });
+
+  router.get("/snapshots", async (req, res) => {
+    try {
+      const clientId = req.user.role === "admin" ? String(req.query.clientId || "") : String(req.user.clientId || "");
+      if (!clientId) return fail(res, 400, "clientId is required");
+      if (req.user.role !== "admin" && clientId !== String(req.user.clientId)) return fail(res, 403, "You cannot access another client data");
+      const startDate = String(req.query.startDate || ""), endDate = String(req.query.endDate || "");
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(startDate) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(endDate) || startDate > endDate) return fail(res, 400, "Valid startDate and endDate are required");
+      const { data, error } = await supabase.from("google_ads_daily_snapshots").select("*").eq("client_id", clientId).gte("snapshot_date", startDate).lte("snapshot_date", endDate).order("snapshot_date", { ascending: true });
+      if (error) throw error;
+      res.json({ success: true, snapshots: data || [], startDate, endDate, source: "Stored daily snapshots" });
+    } catch (e) { console.error("Google Ads snapshots:", e.message); fail(res, 500, "Unable to load stored Google Ads snapshots. Confirm migration 008 has been applied."); }
+  });
   router.get("/assets", async (req, res) => {
     try {
       const clientId = req.user.role === "admin" ? String(req.query.clientId || "") : String(req.user.clientId || "");
