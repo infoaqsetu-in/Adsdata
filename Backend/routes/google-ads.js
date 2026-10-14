@@ -439,39 +439,44 @@ module.exports = (supabase, authenticateToken) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate) return fail(res, 400, "Valid startDate and endDate (YYYY-MM-DD) are required");
       const { data: mappings, error } = await supabase.from("google_ads_client_accounts").select("customer_id,customer_name,currency_code").eq("client_id", clientId);
       if (error) throw error;
-      if (!mappings?.length) return res.json({ success: true, connected: false, calls: [], message: "No Google Ads account is assigned to this client." });
+      if (!mappings?.length) return res.json({ success: true, connected: false, calls: [], warnings: [], message: "No Google Ads account is assigned to this client." });
       const conn = await getConnection(supabase);
       if (!conn) return fail(res, 409, "Google Ads is not connected by the agency administrator", "GOOGLE_ADS_NOT_CONNECTED");
       const accessToken = await refreshAccessToken(conn.refreshToken);
-      const all = [];
+      const all = [], warnings = [];
       for (const account of mappings) {
-        const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
-          query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, segments.date, metrics.phone_calls, metrics.phone_impressions, metrics.phone_through_rate, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
-        });
-        for (const row of result.results || []) {
-          const m = row.metrics || {};
-          const phoneCalls = Number(m.phoneCalls || 0);
-          const phoneImpressions = Number(m.phoneImpressions || 0);
-          const cost = Number(m.costMicros || 0) / 1000000;
-          all.push({
-            customerId: String(row.customer?.id || account.customer_id),
-            customerName: row.customer?.descriptiveName || account.customer_name,
-            currency: row.customer?.currencyCode || account.currency_code,
-            campaignId: String(row.campaign?.id || ""),
-            campaignName: row.campaign?.name || "—",
-            campaignStatus: row.campaign?.status || "—",
-            channel: row.campaign?.advertisingChannelType || "—",
-            date: row.segments?.date || "",
-            calls: phoneCalls,
-            phoneImpressions,
-            callRate: Number(m.phoneThroughRate || 0) * 100,
-            spend: Number(cost.toFixed(2)),
-            conversions: Number(m.conversions || 0),
-            costPerCall: phoneCalls ? Number((cost / phoneCalls).toFixed(2)) : 0
+        try {
+          const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
+            query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, segments.date, metrics.phone_calls, metrics.phone_impressions, metrics.phone_through_rate, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
           });
+          for (const row of result.results || []) {
+            const m = row.metrics || {};
+            const phoneCalls = Number(m.phoneCalls || 0);
+            const phoneImpressions = Number(m.phoneImpressions || 0);
+            const cost = Number(m.costMicros || 0) / 1000000;
+            all.push({
+              customerId: String(row.customer?.id || account.customer_id),
+              customerName: row.customer?.descriptiveName || account.customer_name,
+              currency: row.customer?.currencyCode || account.currency_code,
+              campaignId: String(row.campaign?.id || ""),
+              campaignName: row.campaign?.name || "—",
+              campaignStatus: row.campaign?.status || "—",
+              channel: row.campaign?.advertisingChannelType || "—",
+              date: row.segments?.date || "",
+              calls: phoneCalls,
+              phoneImpressions,
+              callRate: Number(m.phoneThroughRate || 0) * 100,
+              spend: Number(cost.toFixed(2)),
+              conversions: Number(m.conversions || 0),
+              costPerCall: phoneCalls ? Number((cost / phoneCalls).toFixed(2)) : 0
+            });
+          }
+        } catch (accountError) {
+          // One account without call-reporting access must not blank the other accounts.
+          warnings.push((account.customer_name || account.customer_id) + ": " + accountError.message);
         }
       }
-      res.json({ success: true, connected: true, startDate, endDate, calls: all, source: "Google Ads API" });
+      res.json({ success: true, connected: true, startDate, endDate, calls: all, warnings, source: "Google Ads API" });
     } catch (e) {
       console.error("Google Ads calls:", e.message);
       if (e.googleAds) return fail(res, 502, "Google Ads call reporting API error: " + e.message, "GOOGLE_ADS_API_ERROR");

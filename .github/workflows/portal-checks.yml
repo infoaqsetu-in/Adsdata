@@ -1,0 +1,64 @@
+name: Portal Code Checks
+
+on:
+  push:
+    branches: ["main", "audit/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm ci
+      - name: Check backend JavaScript syntax
+        run: |
+          find Backend -type f -name '*.js' -print0 | while IFS= read -r -d '' file; do
+            echo "Checking $file"
+            node --check "$file"
+          done
+      - name: Check inline frontend JavaScript syntax
+        run: |
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          class Scripts(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.items = []
+                  self.current = None
+                  self.attrs = {}
+              def handle_starttag(self, tag, attrs):
+                  if tag.lower() == "script":
+                      self.attrs = dict(attrs)
+                      self.current = []
+              def handle_data(self, data):
+                  if self.current is not None:
+                      self.current.append(data)
+              def handle_endtag(self, tag):
+                  if tag.lower() == "script" and self.current is not None:
+                      typ = (self.attrs.get("type") or "").lower()
+                      if not self.attrs.get("src") and typ not in ("application/json", "application/ld+json", "application/schema+json"):
+                          self.items.append("".join(self.current))
+                      self.current = None
+                      self.attrs = {}
+          parser = Scripts()
+          parser.feed(Path("index.html").read_text(encoding="utf-8"))
+          out = Path("/tmp/aqsetu-inline-js")
+          out.mkdir(exist_ok=True)
+          for i, script in enumerate(parser.items):
+              if script.strip():
+                  (out / f"script-{i}.js").write_text(script, encoding="utf-8")
+          print(f"Extracted {len(list(out.glob('*.js')))} inline JavaScript blocks")
+          PY
+          for file in /tmp/aqsetu-inline-js/*.js; do
+            echo "Checking $file"
+            node --check "$file"
+          done

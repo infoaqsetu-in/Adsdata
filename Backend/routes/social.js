@@ -33,6 +33,7 @@ module.exports=(supabase,authenticateToken)=>{
    const clientId=req.user.role==="admin"?req.body?.clientId:req.user.clientId;
    const {caption,platform,scheduledAt,postUrl,mediaUrl,status="draft"}=req.body||{};
    if(!clientId||!caption||!platform)return res.status(400).json({success:false,message:"Client, caption and platform are required"});
+   if(req.user.role!=="admin" && !["draft","pending_approval"].includes(status))return res.status(403).json({success:false,message:"Client users can only create draft or pending-approval posts"});
    const platforms=["instagram","facebook","linkedin","tiktok","other"],statuses=["draft","pending_approval","approved","scheduled","published","failed","rejected"];
    if(!platforms.includes(String(platform).toLowerCase())||!statuses.includes(status))return res.status(400).json({success:false,message:"Invalid platform or status"});
    const {data:client,error:ce}=await supabase.from("clients").select("id").eq("id",clientId).maybeSingle();if(ce)throw ce;if(!client)return res.status(404).json({success:false,message:"Client not found"});
