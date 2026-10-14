@@ -15,11 +15,14 @@ module.exports=(supabase,authenticateToken)=>{
    const status=String(req.body?.status||"");
    if(!["pending_approval","approved","rejected","draft"].includes(status))return res.status(400).json({success:false,message:"Invalid approval status"});
    const isAdmin=req.user.role==="admin";
-   if(!isAdmin && !["pending_approval","draft"].includes(status))return res.status(403).json({success:false,message:"Only draft or pending posts can be submitted"});
    const clientId=String(req.user.clientId||"");
-   let q=supabase.from("social_posts").update({status,updated_at:new Date().toISOString()}).eq("id",req.params.id);
-   if(!isAdmin)q=q.eq("client_id",clientId);
-   const {data,error}=await q.select("*").maybeSingle();
+   let lookup=supabase.from("social_posts").select("*").eq("id",req.params.id);
+   if(!isAdmin)lookup=lookup.eq("client_id",clientId);
+   const {data:existing,error:lookupError}=await lookup.maybeSingle();
+   if(lookupError)throw lookupError;
+   if(!existing)return res.status(404).json({success:false,message:"Post not found or access denied"});
+   if(!isAdmin && !(existing.status==="pending_approval" && ["approved","rejected"].includes(status) || ["draft","pending_approval"].includes(existing.status) && status==="pending_approval"))return res.status(403).json({success:false,message:"You can only approve or reject posts awaiting your review"});
+   const {data,error}=await supabase.from("social_posts").update({status,updated_at:new Date().toISOString()}).eq("id",req.params.id).select("*").maybeSingle();
    if(error)throw error;
    if(!data)return res.status(404).json({success:false,message:"Post not found or access denied"});
    res.json({success:true,post:data});
