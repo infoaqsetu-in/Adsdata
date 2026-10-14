@@ -2302,8 +2302,19 @@ function downloadGoogleAdsCsv(kind){
   const link=document.createElement('a');link.href='data:text/csv;charset=utf-8,%EF%BB%BF'+encodeURIComponent(csv);link.download='google-ads-'+kind+'-'+(googleAdsReportState.startDate||'report')+'-'+(googleAdsReportState.endDate||'')+'.csv';document.body.appendChild(link);link.click();link.remove();
 }
 function googleAdsSubtab(tab){
-  document.querySelectorAll("[data-google-subtab]").forEach(el=>{el.style.display=(el.dataset.googleSubtab===tab)?"":"none";});
-  document.querySelectorAll("[data-google-tab]").forEach(el=>{el.classList.toggle("active",el.dataset.googleTab===tab);});
+  const allowed = new Set(["overview","keywords","daily","assets","calls","comparison","diagnostics"]);
+  if(!allowed.has(tab)) tab="overview";
+  // Hide/show each report panel without relying on CSS class defaults.
+  document.querySelectorAll("[data-google-subtab]").forEach(el=>{
+    const match = el.getAttribute("data-google-subtab") === tab;
+    el.hidden = !match;
+    el.style.setProperty("display", match ? (el.dataset.googleDisplay || "block") : "none", "important");
+  });
+  document.querySelectorAll("[data-google-tab]").forEach(el=>{
+    const active = el.getAttribute("data-google-tab") === tab;
+    el.classList.toggle("active", active);
+    el.setAttribute("aria-pressed", active ? "true" : "false");
+  });
   window.googleAdsActiveSubtab=tab;
 }
 function googleAdsCampaigns(){
