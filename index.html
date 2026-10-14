@@ -2045,10 +2045,13 @@ function campaigns(){
   + dataBanner()
   + `
     <div class="tabs">
-      <button class="active">Meta Ads</button>
-      <button title="Google Ads is not connected yet" onclick="alert('Google Ads reporting is not connected yet.')">Google Ads</button>
+      <button class="active" onclick="state.campaignPlatform='meta';render()">Meta Ads</button>
+      <button onclick="state.campaignPlatform='google';render()">Google Ads</button>
     </div>
-
+    <div id="google-ads-notice" class="card" style="display:none">
+      <h3>Google Ads is not connected</h3>
+      <p class="muted">Connect Google Ads credentials and configure the API before live campaign data can appear here.</p>
+    </div>
     <div class="card hero">
       <div class="section-head">
         <div>
