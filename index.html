@@ -683,6 +683,11 @@ const state = {
   }
 };
 
+const googleAdsState = {
+  status: null, accounts: [], clients: [], selectedClientId: "",
+  selectedAccountIds: [], loading: false, syncing: false, message: null
+};
+
 const clientPages = [
   "Dashboard",
   "Campaigns",
@@ -1832,11 +1837,82 @@ async function saveMetaPermissionAccounts(){
     render();
   }catch(e){alert(e.message);}
 }
+/* GOOGLE ADS ADMIN CONNECTION */
+async function loadGoogleAdsPanel(){
+  googleAdsState.loading = true;
+  try{
+    const results = await Promise.all([apiRequest("/api/google-ads/status"),apiRequest("/api/google-ads/client-accounts")]);
+    googleAdsState.status = results[0];
+    googleAdsState.clients = results[1].clients || [];
+    const client = googleAdsState.clients.find(c => String(c.id) === String(googleAdsState.selectedClientId));
+    googleAdsState.selectedAccountIds = (client?.accounts || []).map(a => String(a.customerId));
+    googleAdsState.message = null;
+  }catch(error){ googleAdsState.message = {type:"error",text:error.message || "Unable to load Google Ads status."}; }
+  finally{ googleAdsState.loading = false; }
+}
+async function connectGoogleAds(){
+  try{
+    const data = await apiRequest("/api/google-ads/connect",{method:"POST"});
+    if(!data.success || !data.authorizationUrl) throw new Error(data.message || "Could not start Google Ads authorization.");
+    window.location.href = data.authorizationUrl;
+  }catch(error){ googleAdsState.message = {type:"error",text:error.message || "Unable to start Google Ads connection."}; render(); }
+}
+async function syncGoogleAdsAccounts(){
+  googleAdsState.syncing = true; googleAdsState.message = null; render();
+  try{
+    const data = await apiRequest("/api/google-ads/sync-accounts",{method:"POST"});
+    if(!data.success) throw new Error(data.message || "Account sync failed.");
+    googleAdsState.accounts = data.accounts || [];
+    googleAdsState.message = {type:"ok",text:"Synced " + (data.synced || 0) + " Google Ads account(s)."};
+    await loadGoogleAdsPanel(); googleAdsState.accounts = data.accounts || [];
+  }catch(error){ googleAdsState.message = {type:"error",text:error.message || "Unable to sync Google Ads accounts."}; }
+  finally{ googleAdsState.syncing = false; render(); }
+}
+function googleAdsClientChanged(clientId){
+  googleAdsState.selectedClientId = clientId;
+  const client = googleAdsState.clients.find(c => String(c.id) === String(clientId));
+  googleAdsState.selectedAccountIds = (client?.accounts || []).map(a => String(a.customerId)); render();
+}
+function googleAdsAccountToggled(customerId, checked){
+  const id = String(customerId);
+  if(checked && !googleAdsState.selectedAccountIds.includes(id)) googleAdsState.selectedAccountIds.push(id);
+  if(!checked) googleAdsState.selectedAccountIds = googleAdsState.selectedAccountIds.filter(x => x !== id);
+}
+async function saveGoogleAdsAssignments(){
+  const clientId = googleAdsState.selectedClientId;
+  if(!clientId){alert("Select a client first.");return;}
+  try{
+    await apiRequest("/api/google-ads/client-accounts/"+encodeURIComponent(clientId),{method:"PUT",body:JSON.stringify({customerIds:googleAdsState.selectedAccountIds})});
+    googleAdsState.message = {type:"ok",text:"Google Ads accounts assigned to the selected client."};
+    await loadGoogleAdsPanel();
+  }catch(error){ googleAdsState.message = {type:"error",text:error.message || "Unable to save Google Ads assignments."}; }
+  render();
+}
+function googleAdsPanel(){
+  if(!googleAdsState.status && !googleAdsState.loading) loadGoogleAdsPanel().then(render);
+  const s = googleAdsState.status || {}, clients = googleAdsState.clients || [], accounts = googleAdsState.accounts || [];
+  const message = googleAdsState.message ? '<div class="error-message" style="'+(googleAdsState.message.type==="ok"?'color:var(--green);background:#eaf7ef;border-color:#cdebd8;':'')+'">'+esc(googleAdsState.message.text)+'</div>' : '';
+  const statusText = googleAdsState.loading ? "Checking…" : s.connected ? "Connected" : "Not connected";
+  return '<div class="card" style="margin-bottom:16px"><div class="section-head"><h3>Google Ads</h3><span class="badge '+(s.connected?'green':'orange')+'">'+esc(statusText)+'</span></div>'
+    + '<p class="muted">Connect your Google Ads Manager Account, sync accessible accounts, and assign each ad account to the correct AQ Setu client.</p>'+message
+    + '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0"><button class="btn btn-primary" onclick="connectGoogleAds()" '+(googleAdsState.loading?'disabled':'')+'>'+(s.connected?'Reconnect Google Ads':'Connect Google Ads')+'</button>'
+    + '<button class="btn btn-light" onclick="syncGoogleAdsAccounts()" '+(!s.connected||googleAdsState.syncing?'disabled':'')+'>'+(googleAdsState.syncing?'Syncing accounts…':'Sync accounts')+'</button>'
+    + '<button class="btn btn-light" onclick="loadGoogleAdsPanel().then(render)">Refresh status</button></div>'
+    + '<p class="muted" style="font-size:12px">API version: '+esc(s.apiVersion||"—")+' · Developer token: '+(s.developerTokenConfigured?'Configured':'Not configured')+' · Manager ID: '+esc(s.managerCustomerId||"Not configured")+'</p>'
+    + '<hr style="border:0;border-top:1px solid var(--line);margin:18px 0"><h4>Assign Google Ads accounts to clients</h4>'
+    + '<div class="field"><label for="google-ads-client">Client</label><select id="google-ads-client" onchange="googleAdsClientChanged(this.value)" style="width:100%;max-width:560px;padding:12px;border:1px solid var(--line);border-radius:9px"><option value="">Select client…</option>'
+    + clients.map(cl=>'<option value="'+esc(cl.id)+'" '+(String(googleAdsState.selectedClientId)===String(cl.id)?'selected':'')+'>'+esc(cl.display_name)+' ('+esc(cl.client_code||"")+')</option>').join('')+'</select></div>'
+    + (accounts.length ? '<div style="display:grid;gap:8px;max-width:700px">'+accounts.map(a=>'<label style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:8px"><input type="checkbox" value="'+esc(a.customer_id||a.customerId)+'" '+(googleAdsState.selectedAccountIds.includes(String(a.customer_id||a.customerId))?'checked':'')+' onchange="googleAdsAccountToggled(this.value,this.checked)"> <span><b>'+esc(a.customer_name||a.name||a.customerId)+'</b><br><small class="muted">ID: '+esc(a.customer_id||a.customerId)+' · '+esc(a.currency_code||a.currency||"Currency unavailable")+(a.is_manager?' · Manager account':'')+'</small></span></label>').join('')+'</div>' : '<p class="muted">No synced accounts yet. Connect Google Ads, then click “Sync accounts”.</p>')
+    + '<div style="margin-top:14px"><button class="btn btn-primary" onclick="saveGoogleAdsAssignments()" '+(!googleAdsState.selectedClientId?'disabled':'')+'>Save client assignments</button></div>'
+    + '<p class="muted" style="font-size:12px;margin-top:12px">Only accounts retrieved by the Manager Account sync can be assigned here.</p></div>';
+}
+
 function adminIntegrations(){
   const rows=state.adminIntegrations?.integrations||[];
   const clients=state.adminOverview?.clients||[];
   if(!state.adminIntegrations) loadAdminIntegrations().then(render);
-  return title("Integrations","Manage Meta connections, client account permissions, and organic social content.")
+  return title("Integrations","Manage Google Ads, Meta connections, client account permissions, and organic social content.")
+    + googleAdsPanel()
     + '<div class="card"><h3>Connect or Reconnect Meta</h3><p class="muted">Choose the client that should own this Meta connection, then authorize the Facebook account in the popup. Reconnect to grant newly requested Page and Instagram permissions.</p><div class="field"><label for="meta-connect-client">Client for this connection</label><select id="meta-connect-client" style="width:100%;max-width:560px;padding:12px;border:1px solid var(--line);border-radius:9px"><option value="">Select client…</option>' + clients.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.display_name)+' ('+esc(c.client_code)+')</option>').join('') + '</select></div><button class="btn btn-primary" onclick="(function(){const id=document.getElementById(\'meta-connect-client\').value;if(!id){alert(\'Select a client first.\');return;}connectMeta(id);})()">Connect / Reconnect Meta</button></div>'
     + '<div class="card"><h3>Meta Ad Account Permissions</h3><p class="muted">Select a client, load the accounts available through its Meta connection, and check only the accounts it may access.</p>'
     + '<div class="field"><label for="meta-permission-client">Client</label><select id="meta-permission-client" onchange="loadMetaPermissionAccounts()" style="width:100%;max-width:560px;padding:12px;border:1px solid var(--line);border-radius:9px"><option value="">Select client…</option>'
