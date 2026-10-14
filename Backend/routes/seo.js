@@ -76,5 +76,51 @@ module.exports=(supabase,authenticateToken)=>{
    res.json({success:results.some(r=>r.success),date:metricDate,results});
   }catch(e){console.error("SEO sync:",e.message);res.status(500).json({success:false,message:"SEO sync failed"});}
  });
+
+ // Secret-protected endpoint for scheduled daily syncs (GitHub Actions or a scheduler).
+ // Configure the same random secret as SEO_CRON_SECRET in Hostinger and the scheduler.
+ router.post("/cron-sync",async(req,res)=>{
+  const configured=process.env.SEO_CRON_SECRET;
+  const supplied=String(req.get("x-seo-cron-secret")||"");
+  if(!configured)return res.status(503).json({success:false,message:"SEO_CRON_SECRET is not configured"});
+  const expected=Buffer.from(configured);
+  const actual=Buffer.from(supplied);
+  if(expected.length!==actual.length||!crypto.timingSafeEqual(expected,actual))
+   return res.status(401).json({success:false,message:"Unauthorized"});
+  if(!process.env.GSC_SERVICE_ACCOUNT_JSON)
+   return res.status(503).json({success:false,message:"GSC_SERVICE_ACCOUNT_JSON is not configured"});
+  try{
+   const {data:settings,error}=await supabase.from("seo_client_settings").select("client_id,site_url").eq("enabled",true);
+   if(error)throw error;
+   const endDate=new Date();endDate.setDate(endDate.getDate()-3);
+   const startDate=new Date(endDate);startDate.setDate(startDate.getDate()-27);
+   const previousEnd=new Date(startDate);previousEnd.setDate(previousEnd.getDate()-1);
+   const previousStart=new Date(previousEnd);previousStart.setDate(previousStart.getDate()-27);
+   const date=x=>x.toISOString().slice(0,10),metricDate=date(endDate);
+   const results=[];
+   for(const setting of settings||[]){
+    if(!setting.site_url){results.push({clientId:setting.client_id,success:false,message:"No Search Console property URL configured"});continue;}
+    try{
+     const [current,previous]=await Promise.all([
+      searchConsole(setting.site_url,date(startDate),metricDate),
+      searchConsole(setting.site_url,date(previousStart),date(previousEnd))
+     ]);
+     const {error:saveError}=await supabase.from("seo_snapshots").upsert({
+      client_id:setting.client_id,provider:"search_console",metric_date:metricDate,payload:{...current,previous}
+     },{onConflict:"client_id,provider,metric_date"});
+     if(saveError)throw saveError;
+     results.push({clientId:setting.client_id,success:true});
+    }catch(e){
+     console.error("Scheduled SEO sync failed for client",setting.client_id,e.message);
+     results.push({clientId:setting.client_id,success:false,message:e.message});
+    }
+   }
+   const failed=results.filter(x=>!x.success).length;
+   res.status(failed?500:200).json({success:failed===0,date:metricDate,total:results.length,synced:results.length-failed,failed,results});
+  }catch(e){
+   console.error("Scheduled SEO sync:",e.message);
+   res.status(500).json({success:false,message:"Scheduled SEO sync failed"});
+  }
+ });
  return router;
 };
