@@ -2,7 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const { createClient } = require("@supabase/supabase-js");
-const authenticateToken = require("./middleware/auth");
+const createAuthenticateToken = require("./middleware/auth");
 
 require("dotenv").config({
   path: path.join(__dirname, ".env")
@@ -23,6 +23,8 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+const authenticateToken = createAuthenticateToken(supabase);
 
 // ======================================================
 // Middleware
