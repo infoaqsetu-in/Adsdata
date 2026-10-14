@@ -1,6 +1,7 @@
 const express=require("express");
 const {requireRole}=require("../middleware/roles");
 const router=express.Router();
+const b64=o=>Buffer.from(JSON.stringify(o)).toString("base64url");
 let googleTokenCache=null;
 async function googleAccessToken(){
  const raw=process.env.GSC_SERVICE_ACCOUNT_JSON;
