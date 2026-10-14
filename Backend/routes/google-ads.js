@@ -225,6 +225,27 @@ module.exports = (supabase, authenticateToken) => {
     }
   });
 
+  router.get("/available-accounts", async (req, res) => {
+    if (req.user.role !== "admin") return fail(res, 403, "Admin role required");
+    try {
+      const { data, error } = await supabase.from("google_ads_available_accounts")
+        .select("customer_id,customer_name,currency_code,is_manager,status,updated_at")
+        .order("customer_name");
+      if (error) throw error;
+      res.json({ success: true, accounts: (data || []).map(a => ({
+        customerId: normalizeCustomerId(a.customer_id),
+        name: a.customer_name,
+        currency: a.currency_code,
+        isManager: Boolean(a.is_manager),
+        status: a.status,
+        updatedAt: a.updated_at
+      })) });
+    } catch (e) {
+      console.error("Google Ads saved accounts:", e.message);
+      fail(res, 500, "Unable to load saved Google Ads accounts. Confirm migration 007 has been run.");
+    }
+  });
+
   router.get("/client-accounts", async (req, res) => {
     if (req.user.role !== "admin") return fail(res, 403, "Admin role required");
     try {
