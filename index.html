@@ -2308,7 +2308,11 @@ window.googleAdsSubtab = function(tab){
   panels.forEach(el=>{
     const match = el.getAttribute("data-google-subtab") === tab;
     el.hidden = !match;
-    el.style.setProperty("display", match ? (el.dataset.googleDisplay || "block") : "none", "important");
+    // Restore each panel's original layout (grid/flex/block) when shown.
+    // Forcing display:block here breaks grid layouts and can collapse the tab content.
+    el.style.removeProperty("display");
+    el.style.removeProperty("display-important");
+    if(match) el.removeAttribute("hidden");
   });
   document.querySelectorAll("[data-google-tab]").forEach(el=>{
     const active = el.getAttribute("data-google-tab") === tab;
