@@ -64,18 +64,8 @@ module.exports = (supabase, authenticateToken) => {
         user:{ id:user.id, name:user.name || claims.name || email, email:user.email, role, client:user.clients || null }
       });
     } catch(error) {
-      // Log the network failure reason without logging the Google credential.
-      console.error("Google sign-in error object:", error);
-      console.error("Google sign-in error diagnostics:", {
-        message: String(error),
-        stack: error?.stack || null,
-        causeString: error?.cause ? String(error.cause) : null,
-        causeStack: error?.cause?.stack || null,
-        causeCode: error?.cause?.code || null,
-        causeName: error?.cause?.name || null,
-        causeType: typeof error?.cause,
-        ownProperties: error && Object.getOwnPropertyNames(error)
-      });
+      // Never log full fetch errors here: the tokeninfo URL can contain the submitted ID token.
+      console.error("Google sign-in verification failed:", error?.name || "Error", error?.cause?.code || "");
       return res.status(502).json({ success:false, message:"The server could not verify your Google sign-in with Google. Please retry; if this continues, check the backend logs." });
     }
   });
