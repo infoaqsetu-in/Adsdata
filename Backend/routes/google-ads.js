@@ -63,8 +63,11 @@ async function googleAdsRequest(accessToken, customerId, method, body) {
     "Content-Type": "application/json"
   };
   if (c.managerCustomerId) headers["login-customer-id"] = c.managerCustomerId;
+  // Google Ads SearchStream/Search REST methods use the custom-method
+  // URL form /customers/{customerId}:search (not /googleAds:search).
+  const apiMethod = String(method || "").endsWith(":search") ? "search" : String(method || "");
   const response = await fetch(
-    `https://googleads.googleapis.com/${API_VERSION}/customers/${normalizeCustomerId(customerId)}/${method}`,
+    `https://googleads.googleapis.com/${API_VERSION}/customers/${normalizeCustomerId(customerId)}:${apiMethod}`,
     { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }
   );
   const result = await response.json();
