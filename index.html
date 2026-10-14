@@ -662,6 +662,8 @@ const state = {
   adminError: null,
   adminIntegrations: null,
   leadStatus: "All Leads",
+  campaignPlatform: "meta",
+  seoDateRange: "May 01 – May 31, 2026",
   user: null,
   client: null,
   dashboard: null,
@@ -2169,13 +2171,20 @@ function approval(){
    SEO
    ========================================================= */
 
+function chooseSeoDateRange(){
+ const start=prompt("Start date (YYYY-MM-DD):","2026-05-01");if(start===null)return;
+ const end=prompt("End date (YYYY-MM-DD):","2026-05-31");if(end===null)return;
+ if(!start||!end||start>end){alert("Enter valid dates, with start on or before end.");return;}
+ state.seoDateRange=start+" – "+end;render();
+}
+
 function seo(){
 
   return title(
     "SEO Overview",
     "Organic search performance and work completed.",
-    `<button class="btn btn-light">
-      May 01 – May 31, 2026 ▾
+    `<button class="btn btn-light" onclick="chooseSeoDateRange()">
+      ${esc(state.seoDateRange)} ▾
     </button>`
   )
 
