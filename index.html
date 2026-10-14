@@ -2126,130 +2126,44 @@ async function loadSocialCalendar(){
 }
 function social(){setTimeout(loadSocialCalendar,0);return title("Social Media",state.user?.role==="admin"?"Agency-wide calendar across all clients.":"Your past, scheduled and upcoming social posts.")+'<div class="card"><div class="section-head"><h3>Social Media Calendar</h3><select id="social-status-filter" onchange="loadSocialCalendar()" style="padding:9px;border:1px solid var(--line);border-radius:8px"><option value="all">All statuses</option><option value="draft">Draft</option><option value="pending_approval">Pending approval</option><option value="approved">Approved</option><option value="scheduled">Scheduled</option><option value="published">Published</option><option value="failed">Failed</option><option value="rejected">Rejected</option></select></div><div id="social-calendar-live"></div></div>';}
 
+async function loadApprovalItems(){
+ const box=document.getElementById("approval-list");if(!box)return;
+ box.innerHTML='<div class="muted">Loading content…</div>';
+ try{
+  const admin=state.user?.role==="admin";
+  const d=await apiRequest(admin?"/api/admin/social-posts":"/api/social-posts");
+  const filter=document.getElementById("approval-status-filter")?.value||"pending_approval";
+  const rows=(d.posts||[]).filter(p=>filter==="all"?true:filter==="pending"?["draft","pending_approval"].includes(p.status):p.status===filter);
+  box.innerHTML=rows.length?'<div class="list">'+rows.map(p=>'<div class="approval list-item"><div class="thumb">AQ</div><div style="min-width:0;flex:1"><b>'+esc(p.caption||"Untitled post")+'</b><div class="muted" style="margin-top:5px">'+esc(p.platform||"—")+' · '+esc(p.status||"draft")+' · '+esc(p.scheduled_at?new Date(p.scheduled_at).toLocaleString("en-IN"):"No schedule")+'</div>'+(p.post_url?'<a href="'+esc(p.post_url)+'" target="_blank" rel="noopener">View post</a>':'')+'</div><div class="actions">'+(p.status==="pending_approval"?'<button class="btn" style="border:1px solid #9bd4b0;color:var(--green);background:#fff" onclick="updateApproval(\''+esc(p.id)+'\',\'approved\')">Approve</button><button class="btn" style="border:1px solid #efaaaa;color:var(--red);background:#fff" onclick="updateApproval(\''+esc(p.id)+'\',\'rejected\')">Reject</button>':'<span class="muted">No review action</span>')+'</div></div>').join("")+'</div>':'<div class="empty">No content found for this status. Add a post using Upload Content.</div>';
+ }catch(e){box.innerHTML='<div class="error-message">'+esc(e.message)+'</div>';}
+}
+async function updateApproval(id,status){
+ try{await apiRequest('/api/social-posts/'+encodeURIComponent(id)+'/status',{method:'PATCH',body:JSON.stringify({status})});await loadApprovalItems();alert('Content status saved as '+status+'.');}
+ catch(e){alert(e.message);}
+}
+async function uploadContent(){
+ const admin=state.user?.role==="admin";let clientId;
+ if(admin){
+  const d=await apiRequest('/api/admin/overview');
+  const clients=d.clients||[];
+  if(!clients.length){alert('Create a client first.');return;}
+  const choices=clients.map((c,i)=>(i+1)+'. '+c.display_name).join('\n');
+  const choice=prompt('Choose client number:\n'+choices,'1');if(choice===null)return;
+  const idx=Number(choice)-1;if(!Number.isInteger(idx)||idx<0||idx>=clients.length){alert('Invalid client selection.');return;}clientId=clients[idx].id;
+ }
+ const caption=prompt('Enter the post caption:');if(!caption?.trim())return;
+ const platform=(prompt('Platform: instagram, facebook, linkedin, tiktok, or other','instagram')||'').trim().toLowerCase();
+ if(!['instagram','facebook','linkedin','tiktok','other'].includes(platform)){alert('Unsupported platform.');return;}
+ const scheduledAt=prompt('Schedule date/time (optional, e.g. 2026-10-20T10:00:00) or leave blank:');if(scheduledAt===null)return;
+ const postUrl=prompt('Post URL (optional):')||'';
+ try{await apiRequest('/api/social-posts',{method:'POST',body:JSON.stringify({clientId,caption:caption.trim(),platform,scheduledAt:scheduledAt.trim()||null,postUrl:postUrl.trim()||null,status:'pending_approval'})});alert('Content saved and submitted for approval.');await loadApprovalItems();}
+ catch(e){alert(e.message);}
+}
 function approval(){
-
-  return title(
-    "Content Approval",
-    "Review creatives and captions before publishing.",
-    `<button
-      class="btn btn-light"
-      onclick="alert('New content upload will be connected in the next build.')"
-    >
-      + Upload Content
-    </button>`
-  )
-
-  + `
-
-    <div class="card">
-
-      <div class="tabs">
-
-        <button class="active">
-          Pending (2)
-        </button>
-
-        <button>
-          Approved
-        </button>
-
-        <button>
-          Rejected
-        </button>
-
-      </div>
-
-      <div class="list">
-
-        ${[
-          ["Boost your brand with smart strategies.","May 31, 2026"],
-          ["Let’s grow your business together.","May 30, 2026"]
-        ].map(item => `
-
-          <div class="approval list-item">
-
-            <div class="thumb">
-              AQ
-            </div>
-
-            <div>
-
-              <b>
-                ${item[0]}
-              </b>
-
-              <div style="
-                color:var(--muted);
-                font-size:12px;
-                margin-top:5px
-              ">
-                ${item[1]} · Facebook · Instagram
-              </div>
-
-            </div>
-
-            <div class="actions">
-
-              <button
-                class="btn"
-                style="
-                  border:1px solid #9bd4b0;
-                  color:var(--green);
-                  background:#fff
-                "
-                onclick="approve(this)"
-              >
-                Approve
-              </button>
-
-              <button
-                class="btn"
-                style="
-                  border:1px solid #efaaaa;
-                  color:var(--red);
-                  background:#fff
-                "
-                onclick="reject(this)"
-              >
-                Reject
-              </button>
-
-            </div>
-
-          </div>
-
-        `).join("")}
-
-      </div>
-
-    </div>
-
-  `;
+ setTimeout(loadApprovalItems,0);
+ return title("Content Approval","Review and track client content approvals.",'<button class="btn btn-primary" onclick="uploadContent()">+ Upload Content</button>')
+ + '<div class="card"><div class="section-head"><h3>Content queue</h3><select id="approval-status-filter" onchange="loadApprovalItems()" style="padding:9px;border:1px solid var(--line);border-radius:8px"><option value="pending">Pending review</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="scheduled">Scheduled</option><option value="published">Published</option><option value="all">All content</option></select></div><div id="approval-list"></div></div>';
 }
-
-
-/* =========================================================
-   APPROVAL ACTIONS
-   ========================================================= */
-
-function approve(button){
-
-  button.closest(".approval").remove();
-
-  alert(
-    "Content approved successfully."
-  );
-}
-
-function reject(button){
-
-  button.closest(".approval").remove();
-
-  alert(
-    "Content rejected and sent back to AQ Setu team."
-  );
-}
-
 
 /* =========================================================
    SEO
