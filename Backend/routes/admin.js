@@ -7,6 +7,31 @@ const router = express.Router();
 module.exports = (supabase, authenticateToken) => {
   router.use(authenticateToken, requireRole("admin"));
 
+  router.get("/seo-settings", async (req,res) => {
+    try {
+      const [{data:clients,error:ce},{data:settings,error:se}]=await Promise.all([
+        supabase.from("clients").select("id,display_name,client_code,website,status").order("display_name"),
+        supabase.from("seo_client_settings").select("*")
+      ]);
+      if(ce)throw ce;if(se)throw se;
+      const byClient=new Map((settings||[]).map(x=>[x.client_id,x]));
+      res.json({success:true,clients:(clients||[]).map(c=>({...c,seo:byClient.get(c.id)||{client_id:c.id,enabled:false,site_url:c.website||"",semrush_database:"us"}})),configured:{searchConsole:Boolean(process.env.GSC_SERVICE_ACCOUNT_JSON),semrush:Boolean(process.env.SEMRUSH_API_KEY)}});
+    } catch(e){console.error("Admin SEO settings:",e.message);res.status(500).json({success:false,message:"Unable to load SEO settings. Run SQL migration 005 first."});}
+  });
+  router.put("/seo-settings/:clientId", async (req,res) => {
+    try {
+      const clientId=String(req.params.clientId||"");
+      const enabled=Boolean(req.body?.enabled);
+      const siteUrl=String(req.body?.siteUrl||"").trim();
+      const database=String(req.body?.semrushDatabase||"us").trim().toLowerCase();
+      if(siteUrl&&!/^https?:\/\//i.test(siteUrl))return res.status(400).json({success:false,message:"Website URL must start with https:// or http://"});
+      if(!/^[a-z]{2}$/i.test(database))return res.status(400).json({success:false,message:"Semrush database must be a two-letter country code such as us, uk, or in"});
+      const {data:client,error:ce}=await supabase.from("clients").select("id").eq("id",clientId).maybeSingle();if(ce)throw ce;if(!client)return res.status(404).json({success:false,message:"Client not found"});
+      const {data,error}=await supabase.from("seo_client_settings").upsert({client_id:clientId,enabled,site_url:siteUrl||null,semrush_database:database,updated_at:new Date().toISOString()},{onConflict:"client_id"}).select("*").single();
+      if(error)throw error;res.json({success:true,setting:data});
+    } catch(e){console.error("Save SEO settings:",e.message);res.status(500).json({success:false,message:"Unable to save SEO settings. Confirm SQL migration 005 has been run."});}
+  });
+
   router.get("/overview", async (req, res) => {
     try {
       const [{ data: clients, error: clientsError }, { data: users, error: usersError }] =
