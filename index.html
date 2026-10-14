@@ -1847,9 +1847,10 @@ async function saveMetaPermissionAccounts(){
 async function loadGoogleAdsPanel(){
   googleAdsState.loading = true;
   try{
-    const results = await Promise.all([apiRequest("/api/google-ads/status"),apiRequest("/api/google-ads/client-accounts")]);
+    const results = await Promise.all([apiRequest("/api/google-ads/status"),apiRequest("/api/google-ads/client-accounts"),apiRequest("/api/google-ads/available-accounts")]);
     googleAdsState.status = results[0];
     googleAdsState.clients = results[1].clients || [];
+    googleAdsState.accounts = results[2].accounts || [];
     const client = googleAdsState.clients.find(c => String(c.id) === String(googleAdsState.selectedClientId));
     googleAdsState.selectedAccountIds = (client?.accounts || []).map(a => String(a.customerId));
     googleAdsState.message = null;
