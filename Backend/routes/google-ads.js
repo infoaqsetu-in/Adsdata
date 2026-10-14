@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 const { encryptToken, decryptToken } = require("../services/crypto");
 
 const router = express.Router();
-const API_VERSION = process.env.GOOGLE_ADS_API_VERSION || "v22";
+const API_VERSION = process.env.GOOGLE_ADS_API_VERSION || "v25";
 
 const fail = (res, status, message, code) =>
   res.status(status).json({ success: false, message, ...(code ? { code } : {}) });
@@ -281,10 +281,9 @@ module.exports = (supabase, authenticateToken) => {
         status: r.customerClient.status,
         updated_at: new Date().toISOString()
       }));
-      const { error: clearError } = await supabase.from("google_ads_available_accounts").delete().neq("customer_id", "");
-      if (clearError) throw clearError;
       if (accounts.length) {
-        const { error } = await supabase.from("google_ads_available_accounts").insert(accounts);
+        const { error } = await supabase.from("google_ads_available_accounts")
+          .upsert(accounts, { onConflict: "customer_id" });
         if (error) throw error;
       }
       res.json({ success: true, synced: accounts.length, accounts });
