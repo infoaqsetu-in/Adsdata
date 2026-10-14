@@ -687,6 +687,7 @@ const googleAdsState = {
   status: null, accounts: [], clients: [], selectedClientId: "",
   selectedAccountIds: [], loading: false, syncing: false, message: null
 };
+const googleAdsReportState = { loading: false, error: "", data: null, startDate: "", endDate: "" };
 
 const clientPages = [
   "Dashboard",
@@ -2122,7 +2123,7 @@ function metaConnectionBar(){
     </div>`;
 }
 
-function campaigns(){
+function metaCampaigns(){
 
   const d = state.dashboard;
   const m = d?.metrics || {};
@@ -2207,6 +2208,58 @@ function campaigns(){
   `;
 }
 
+
+
+
+async function loadGoogleAdsCampaigns(){
+  if(googleAdsReportState.loading) return;
+  googleAdsReportState.loading = true;
+  googleAdsReportState.error = "";
+  render();
+  try{
+    const now = new Date(), start = new Date(now);
+    start.setDate(start.getDate()-29);
+    const iso = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    const range = state.dashboard?.dateRange || {};
+    const startDate = /^\d{4}-\d{2}-\d{2}$/.test(range.start || "") ? range.start : iso(start);
+    const endDate = /^\d{4}-\d{2}-\d{2}$/.test(range.stop || "") ? range.stop : iso(now);
+    googleAdsReportState.startDate = startDate;
+    googleAdsReportState.endDate = endDate;
+    const clientId = state.client?.id || state.user?.clientId;
+    if(!clientId) throw new Error("Your portal user is not linked to a client. Ask the agency administrator to check your client access.");
+    googleAdsReportState.data = await apiRequest("/api/google-ads/campaigns?clientId="+encodeURIComponent(clientId)+"&startDate="+encodeURIComponent(startDate)+"&endDate="+encodeURIComponent(endDate));
+  }catch(error){
+    googleAdsReportState.error = error.message || "Unable to load Google Ads campaigns.";
+    googleAdsReportState.data = null;
+  }finally{
+    googleAdsReportState.loading = false;
+    render();
+  }
+}
+
+function googleAdsCampaigns(){
+  if(!googleAdsReportState.data && !googleAdsReportState.loading && !googleAdsReportState.error) setTimeout(loadGoogleAdsCampaigns,0);
+  const data = googleAdsReportState.data, rows = data?.campaigns || [];
+  const sum = key => rows.reduce((n,r)=>n+Number(r[key]||0),0);
+  const impressions=sum("impressions"), clicks=sum("clicks"), spend=sum("spend"), conversions=sum("conversions");
+  const ctr=impressions ? clicks/impressions*100 : 0, cpc=clicks ? spend/clicks : 0;
+  const kpi=(label,value)=>'<div class="card kpi"><div class="label">'+label+'</div><div class="value">'+value+'</div></div>';
+  const error = googleAdsReportState.error ? '<div class="error-message" style="margin:14px 0">'+esc(googleAdsReportState.error)+'</div>' : "";
+  const notice = data && data.connected === false ? '<div class="card empty" style="margin-bottom:16px">'+esc(data.message || "No Google Ads account is assigned to this client. Ask the agency administrator to assign an account in Integrations.")+'</div>' : "";
+  return title("Campaigns","Live performance from your assigned Google Ads account.")
+    + error + notice
+    + '<div class="card" style="margin-bottom:16px"><div class="section-head"><div><h3>Google Ads Performance</h3><div class="muted">'+esc(googleAdsReportState.startDate || "Last 30 days")+' to '+esc(googleAdsReportState.endDate || "")+'</div></div><button class="btn btn-light" onclick="googleAdsReportState.data=null;googleAdsReportState.error=\'\';loadGoogleAdsCampaigns()" '+(googleAdsReportState.loading?'disabled':'')+'>'+(googleAdsReportState.loading?'Loading…':'Refresh report')+'</button></div>'
+    + (googleAdsReportState.loading ? '<div class="muted" style="padding:18px 0">Loading Google Ads data…</div>' : '')
+    + '<div class="grid three">'+kpi("Spend",fmtMoney(spend))+kpi("Impressions",fmtNum(impressions))+kpi("Clicks",fmtNum(clicks))+kpi("Conversions",fmtNum(conversions))+kpi("CTR",fmtPct(ctr))+kpi("Avg. CPC",fmtMoney(cpc))+'</div></div>'
+    + '<div class="card"><div class="section-head"><h3>Google Ads Campaigns</h3><span class="badge '+(data?.connected?'green':'orange')+'">'+(data?.connected?'Live API data':'Waiting for account assignment')+'</span></div>'
+    + (rows.length ? '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Campaign</th><th>Status</th><th>Channel</th><th>Date</th><th>Spend</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Conversions</th><th>Avg. CPC</th></tr></thead><tbody>'+rows.map(c=>'<tr><td>'+esc(c.campaignName||"—")+'<div class="muted">'+esc(c.customerName||"")+'</div></td><td><span class="badge '+(c.campaignStatus==="ENABLED"?'green':'orange')+'">'+esc(c.campaignStatus||"—")+'</span></td><td>'+esc(String(c.channel||"—").replace(/_/g," "))+'</td><td>'+esc(c.date||"—")+'</td><td>'+fmtMoney(c.spend)+'</td><td>'+fmtNum(c.impressions)+'</td><td>'+fmtNum(c.clicks)+'</td><td>'+fmtPct(c.ctr)+'</td><td>'+fmtNum(c.conversions)+'</td><td>'+fmtMoney(c.averageCpc)+'</td></tr>').join("")+'</tbody></table></div>' : (data?.connected && !googleAdsReportState.loading ? '<div class="muted" style="padding:24px 0">No campaign activity was returned for this date range.</div>' : ''))
+    + '</div>';
+}
+
+function campaigns(){
+  return '<div class="tabs"><button class="'+(state.campaignPlatform==="meta"?"active":"")+'" onclick="state.campaignPlatform=\'meta\';render()">Meta Ads</button><button class="'+(state.campaignPlatform==="google"?"active":"")+'" onclick="state.campaignPlatform=\'google\';googleAdsReportState.data=null;googleAdsReportState.error=\'\';loadGoogleAdsCampaigns()">Google Ads</button></div>'
+    + (state.campaignPlatform==="google" ? googleAdsCampaigns() : metaCampaigns());
+}
 
 /* =========================================================
    LEADS
