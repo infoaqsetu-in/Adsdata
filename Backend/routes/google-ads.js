@@ -238,29 +238,62 @@ module.exports = (supabase, authenticateToken) => {
     if (req.user.role !== "admin") return fail(res, 403, "Admin role required");
     const clientId = String(req.params.clientId || "");
     const ids = Array.isArray(req.body?.customerIds) ? [...new Set(req.body.customerIds.map(normalizeCustomerId))] : null;
-    if (!clientId || !ids || ids.some(id => !/^\d{10}$/.test(id))) return fail(res, 400, "clientId and an array of 10-digit customerIds are required");
+    if (!clientId || !ids || ids.some(id => !/^\d{10}$/.test(id))) {
+      return fail(res, 400, "clientId and an array of 10-digit customerIds are required");
+    }
+
     try {
       const { data: client, error: ce } = await supabase.from("clients").select("id").eq("id", clientId).maybeSingle();
       if (ce) throw ce;
       if (!client) return fail(res, 404, "Client not found");
-      const { data: existing, error: ee } = await supabase.from("google_ads_client_accounts").select("customer_id").neq("client_id", clientId).in("customer_id", ids);
-      if (ee) throw ee;
-      if ((existing || []).length) return fail(res, 409, "One or more Google Ads accounts are already assigned to another client");
+
+      // Validate requested accounts before deleting existing assignments, so a bad request
+      // can never wipe the client's current mapping.
+      let found = new Map();
+      if (ids.length) {
+        const { data: available, error: ae } = await supabase.from("google_ads_available_accounts")
+          .select("customer_id,customer_name,currency_code").in("customer_id", ids);
+        if (ae) throw ae;
+        found = new Map((available || []).map(a => [normalizeCustomerId(a.customer_id), a]));
+        if (ids.some(id => !found.has(id))) {
+          return fail(res, 400, "One or more accounts are not in the synced account list. Click Sync accounts and try again.");
+        }
+
+        const { data: existing, error: ee } = await supabase.from("google_ads_client_accounts")
+          .select("customer_id,client_id").neq("client_id", clientId).in("customer_id", ids);
+        if (ee) throw ee;
+        if ((existing || []).length) {
+          return fail(res, 409, "One or more selected Google Ads accounts are already assigned to another client. Remove that assignment first.");
+        }
+      }
+
       const { error: de } = await supabase.from("google_ads_client_accounts").delete().eq("client_id", clientId);
       if (de) throw de;
+
       if (ids.length) {
-        const { data: available, error: ae } = await supabase.from("google_ads_available_accounts").select("customer_id,customer_name,currency_code").in("customer_id", ids);
-        if (ae) throw ae;
-        const found = new Map((available || []).map(a => [a.customer_id, a]));
-        if (ids.some(id => !found.has(id))) return fail(res, 400, "Refresh available Google Ads accounts before assigning them");
-        const rows = ids.map(id => ({ client_id: clientId, customer_id: id, customer_name: found.get(id).customer_name, currency_code: found.get(id).currency_code, updated_at: new Date().toISOString() }));
-        const { error } = await supabase.from("google_ads_client_accounts").insert(rows);
-        if (error) throw error;
+        const rows = ids.map(id => {
+          const account = found.get(id);
+          return {
+            client_id: clientId,
+            customer_id: id,
+            customer_name: account.customer_name,
+            currency_code: account.currency_code,
+            updated_at: new Date().toISOString()
+          };
+        });
+        const { error: ie } = await supabase.from("google_ads_client_accounts").insert(rows);
+        if (ie) {
+          if (ie.code === "23505") {
+            return fail(res, 409, "A selected Google Ads account is already assigned elsewhere. Refresh assignments and try again.");
+          }
+          throw ie;
+        }
       }
-      res.json({ success: true, assigned: ids.length });
+
+      return res.json({ success: true, assigned: ids.length });
     } catch (e) {
-      console.error("Google Ads assign client account:", e.message);
-      fail(res, 500, "Unable to assign Google Ads accounts. Confirm migration 007 has been run.");
+      console.error("Google Ads assign client account:", { message: e.message, code: e.code, details: e.details, hint: e.hint });
+      return fail(res, 500, "Unable to save Google Ads assignments" + (e.code ? " (database error " + e.code + ")" : "") + ". Check the server logs if this continues.", "GOOGLE_ADS_ASSIGNMENT_SAVE_FAILED");
     }
   });
 
