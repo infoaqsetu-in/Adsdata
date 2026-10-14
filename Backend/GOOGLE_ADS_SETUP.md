@@ -31,5 +31,5 @@ Add that exact URL under the OAuth client's **Authorized redirect URIs** in Goog
 - Client campaign requests are scoped to the authenticated user's own client ID.
 - Each Google Ads customer ID may be assigned to only one portal client.
 - Only real Google Ads API results are returned; no placeholder metrics are generated.
-- The API version can be changed using `GOOGLE_ADS_API_VERSION` if Google retires the default version.
+- The integration defaults to Google Ads API `v25`, the current supported major version at implementation time. The API version can be changed using `GOOGLE_ADS_API_VERSION` when upgrading.
 - If a user previously authorized without a refresh token, revoke the AQ Setu Google Ads authorization in Google Account permissions and reconnect.
