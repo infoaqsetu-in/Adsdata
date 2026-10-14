@@ -22,11 +22,17 @@ async function googleAccessToken(){
 }
 async function searchConsole(siteUrl,startDate,endDate){
  const token=await googleAccessToken();
- const resp=await fetch("https://www.googleapis.com/webmasters/v3/sites/"+encodeURIComponent(siteUrl)+"/searchAnalytics/query",{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json"},body:JSON.stringify({startDate,endDate,dimensions:["query"],rowLimit:100})});
- const data=await resp.json();if(!resp.ok)throw new Error(data.error?.message||"Search Console query failed");
- const rows=data.rows||[],clicks=rows.reduce((n,r)=>n+Number(r.clicks||0),0),impressions=rows.reduce((n,r)=>n+Number(r.impressions||0),0);
- return {clicks,impressions,ctr:impressions?clicks/impressions:0,averagePosition:impressions?rows.reduce((n,r)=>n+Number(r.position||0)*Number(r.impressions||0),0)/impressions:null,queries:rows.map(r=>({query:r.keys?.[0]||"",clicks:r.clicks||0,impressions:r.impressions||0,ctr:r.ctr||0,position:r.position||0}))};
+ const endpoint="https://www.googleapis.com/webmasters/v3/sites/"+encodeURIComponent(siteUrl)+"/searchAnalytics/query";
+ async function query(dimensions){
+  const resp=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json"},body:JSON.stringify({startDate,endDate,dimensions,rowLimit:100})});
+  const data=await resp.json();if(!resp.ok)throw new Error(data.error?.message||"Search Console query failed");return data.rows||[];
+ }
+ const [queryRows,pageRows]=await Promise.all([query(["query"]),query(["page"])]);
+ const clicks=queryRows.reduce((n,r)=>n+Number(r.clicks||0),0),impressions=queryRows.reduce((n,r)=>n+Number(r.impressions||0),0);
+ const weightedPosition=impressions?queryRows.reduce((n,r)=>n+Number(r.position||0)*Number(r.impressions||0),0)/impressions:null;
+ return {startDate,endDate,clicks,impressions,ctr:impressions?clicks/impressions:0,averagePosition:weightedPosition,queries:queryRows.map(r=>({query:r.keys?.[0]||"",clicks:r.clicks||0,impressions:r.impressions||0,ctr:r.ctr||0,position:r.position||0})),pages:pageRows.map(r=>({page:r.keys?.[0]||"",clicks:r.clicks||0,impressions:r.impressions||0,ctr:r.ctr||0,position:r.position||0}))};
 }
+
 module.exports=(supabase,authenticateToken)=>{
  router.get("/status",authenticateToken,async(req,res)=>{
   try{
