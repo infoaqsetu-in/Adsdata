@@ -687,7 +687,7 @@ const googleAdsState = {
   status: null, accounts: [], clients: [], selectedClientId: "",
   selectedAccountIds: [], loading: false, syncing: false, message: null
 };
-const googleAdsReportState = { loading: false, error: "", data: null, startDate: "", endDate: "" };
+const googleAdsReportState = { loading: false, error: "", assetError: "", data: null, assetsData: null, startDate: "", endDate: "" };
 
 const clientPages = [
   "Dashboard",
@@ -2142,14 +2142,6 @@ function metaCampaigns(){
   + metaConnectionBar()
   + dataBanner()
   + `
-    <div class="tabs">
-      <button class="active" onclick="state.campaignPlatform='meta';render()">Meta Ads</button>
-      <button onclick="alert('Google Ads is not connected yet. Configure a Google Ads developer token, OAuth client credentials, and customer ID before live reporting can be enabled.')">Google Ads</button>
-    </div>
-    <div id="google-ads-notice" class="card" style="display:none">
-      <h3>Google Ads is not connected</h3>
-      <p class="muted">Connect Google Ads credentials and configure the API before live campaign data can appear here.</p>
-    </div>
     <div class="card hero">
       <div class="section-head">
         <div>
@@ -2227,7 +2219,15 @@ async function loadGoogleAdsCampaigns(){
     googleAdsReportState.endDate = endDate;
     const clientId = state.client?.id || state.user?.clientId;
     if(!clientId) throw new Error("Your portal user is not linked to a client. Ask the agency administrator to check your client access.");
-    googleAdsReportState.data = await apiRequest("/api/google-ads/campaigns?clientId="+encodeURIComponent(clientId)+"&startDate="+encodeURIComponent(startDate)+"&endDate="+encodeURIComponent(endDate));
+    const query = "?clientId="+encodeURIComponent(clientId)+"&startDate="+encodeURIComponent(startDate)+"&endDate="+encodeURIComponent(endDate);
+    const [campaignResult, assetResult] = await Promise.allSettled([
+      apiRequest("/api/google-ads/campaigns"+query),
+      apiRequest("/api/google-ads/assets"+query)
+    ]);
+    if(campaignResult.status === "rejected") throw campaignResult.reason;
+    googleAdsReportState.data = campaignResult.value;
+    googleAdsReportState.assetsData = assetResult.status === "fulfilled" ? assetResult.value : null;
+    googleAdsReportState.assetError = assetResult.status === "rejected" ? (assetResult.reason?.message || "Asset data is temporarily unavailable.") : "";
   }catch(error){
     googleAdsReportState.error = error.message || "Unable to load Google Ads campaigns.";
     googleAdsReportState.data = null;
@@ -2237,23 +2237,54 @@ async function loadGoogleAdsCampaigns(){
   }
 }
 
+function googleAdsTrendChart(rows){
+  const byDate = {};
+  rows.forEach(r=>{
+    const d=String(r.date||"");
+    if(!d)return;
+    if(!byDate[d])byDate[d]={date:d,spend:0,clicks:0,impressions:0,conversions:0};
+    byDate[d].spend+=Number(r.spend||0);
+    byDate[d].clicks+=Number(r.clicks||0);
+    byDate[d].impressions+=Number(r.impressions||0);
+    byDate[d].conversions+=Number(r.conversions||0);
+  });
+  const points=Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date)).slice(-14);
+  if(!points.length)return '<div class="empty" style="padding:24px">Chart data will appear when Google Ads returns daily performance.</div>';
+  const max=Math.max(1,...points.map(p=>p.spend));
+  return '<div style="display:flex;align-items:flex-end;gap:8px;min-height:190px;padding:16px 4px 0;overflow-x:auto">'+points.map(p=>{
+    const h=Math.max(4,p.spend/max*135);
+    return '<div title="'+esc(p.date+' · Spend '+fmtMoney(p.spend)+' · Clicks '+fmtNum(p.clicks)+' · Conversions '+fmtNum(p.conversions))+'" style="flex:1;min-width:24px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:175px;gap:7px"><div style="font-size:10px;color:var(--muted)">'+esc(fmtMoney(p.spend))+'</div><div style="height:'+h+'px;width:min(28px,90%);background:var(--green);border-radius:5px 5px 0 0"></div><div style="font-size:10px;color:var(--muted);white-space:nowrap">'+esc(p.date.slice(5))+'</div></div>';
+  }).join('')+'</div><p class="muted" style="font-size:12px;margin-bottom:0">Daily spend for the latest '+points.length+' dates with activity. Hover over a bar for spend, clicks and conversions.</p>';
+}
+
 function googleAdsCampaigns(){
   if(!googleAdsReportState.data && !googleAdsReportState.loading && !googleAdsReportState.error) setTimeout(loadGoogleAdsCampaigns,0);
-  const data = googleAdsReportState.data, rows = data?.campaigns || [];
-  const sum = key => rows.reduce((n,r)=>n+Number(r[key]||0),0);
-  const impressions=sum("impressions"), clicks=sum("clicks"), spend=sum("spend"), conversions=sum("conversions");
-  const ctr=impressions ? clicks/impressions*100 : 0, cpc=clicks ? spend/clicks : 0;
-  const kpi=(label,value)=>'<div class="card kpi"><div class="label">'+label+'</div><div class="value">'+value+'</div></div>';
-  const error = googleAdsReportState.error ? '<div class="error-message" style="margin:14px 0">'+esc(googleAdsReportState.error)+'</div>' : "";
-  const notice = data && data.connected === false ? '<div class="card empty" style="margin-bottom:16px">'+esc(data.message || "No Google Ads account is assigned to this client. Ask the agency administrator to assign an account in Integrations.")+'</div>' : "";
-  return title("Campaigns","Live performance from your assigned Google Ads account.")
-    + error + notice
-    + '<div class="card" style="margin-bottom:16px"><div class="section-head"><div><h3>Google Ads Performance</h3><div class="muted">'+esc(googleAdsReportState.startDate || "Last 30 days")+' to '+esc(googleAdsReportState.endDate || "")+'</div></div><button class="btn btn-light" onclick="googleAdsReportState.data=null;googleAdsReportState.error=\'\';loadGoogleAdsCampaigns()" '+(googleAdsReportState.loading?'disabled':'')+'>'+(googleAdsReportState.loading?'Loading…':'Refresh report')+'</button></div>'
-    + (googleAdsReportState.loading ? '<div class="muted" style="padding:18px 0">Loading Google Ads data…</div>' : '')
-    + '<div class="grid three">'+kpi("Spend",fmtMoney(spend))+kpi("Impressions",fmtNum(impressions))+kpi("Clicks",fmtNum(clicks))+kpi("Conversions",fmtNum(conversions))+kpi("CTR",fmtPct(ctr))+kpi("Avg. CPC",fmtMoney(cpc))+'</div></div>'
-    + '<div class="card"><div class="section-head"><h3>Google Ads Campaigns</h3><span class="badge '+(data?.connected?'green':'orange')+'">'+(data?.connected?'Live API data':'Waiting for account assignment')+'</span></div>'
-    + (rows.length ? '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Campaign</th><th>Status</th><th>Channel</th><th>Date</th><th>Spend</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Conversions</th><th>Avg. CPC</th></tr></thead><tbody>'+rows.map(c=>'<tr><td>'+esc(c.campaignName||"—")+'<div class="muted">'+esc(c.customerName||"")+'</div></td><td><span class="badge '+(c.campaignStatus==="ENABLED"?'green':'orange')+'">'+esc(c.campaignStatus||"—")+'</span></td><td>'+esc(String(c.channel||"—").replace(/_/g," "))+'</td><td>'+esc(c.date||"—")+'</td><td>'+fmtMoney(c.spend)+'</td><td>'+fmtNum(c.impressions)+'</td><td>'+fmtNum(c.clicks)+'</td><td>'+fmtPct(c.ctr)+'</td><td>'+fmtNum(c.conversions)+'</td><td>'+fmtMoney(c.averageCpc)+'</td></tr>').join("")+'</tbody></table></div>' : (data?.connected && !googleAdsReportState.loading ? '<div class="muted" style="padding:24px 0">No campaign activity was returned for this date range.</div>' : ''))
-    + '</div>';
+  const data=googleAdsReportState.data, rows=data?.campaigns||[], assetData=googleAdsReportState.assetsData, assets=assetData?.assets||[];
+  const sum=key=>rows.reduce((n,r)=>n+Number(r[key]||0),0);
+  const impressions=sum("impressions"),clicks=sum("clicks"),spend=sum("spend"),conversions=sum("conversions");
+  const ctr=impressions?clicks/impressions*100:0,cpc=clicks?spend/clicks:0;
+  const kpi=(label,value)=>'<div class="card kpi"><div class="label">'+esc(label)+'</div><div class="value">'+value+'</div></div>';
+  const error=googleAdsReportState.error?'<div class="error-message" style="margin:14px 0">'+esc(googleAdsReportState.error)+'</div>':"";
+  const notice=data&&data.connected===false?'<div class="card empty" style="margin-bottom:16px">'+esc(data.message||"No Google Ads account is assigned to this client. Ask the agency administrator to assign an account in Integrations.")+'</div>':"";
+  const refresh='<button class="btn btn-light" onclick="googleAdsReportState.data=null;googleAdsReportState.assetsData=null;googleAdsReportState.error=\'\';googleAdsReportState.assetError=\'\';loadGoogleAdsCampaigns()" '+(googleAdsReportState.loading?'disabled':'')+'>'+(googleAdsReportState.loading?'Loading…':'Refresh report')+'</button>';
+  const assetWarning=googleAdsReportState.assetError?'<div class="error-message">'+esc('Campaign data loaded, but asset data could not be loaded: '+googleAdsReportState.assetError)+'</div>':(assetData?.warnings?.length?'<p class="muted" style="font-size:12px">'+esc(assetData.warnings.join(' · '))+'</p>':"");
+  const assetRows=assets.slice().sort((a,b)=>Number(b.impressions||0)-Number(a.impressions||0));
+  return title("Campaigns","Google Ads campaign, asset and performance analytics.")
+    +error+notice
+    +'<div class="card" style="margin-bottom:16px"><div class="section-head"><div><h3>Google Ads Performance</h3><div class="muted">'+esc(googleAdsReportState.startDate||"Last 30 days")+' to '+esc(googleAdsReportState.endDate||"")+'</div></div>'+refresh+'</div>'
+    +(googleAdsReportState.loading?'<div class="muted" style="padding:18px 0">Loading Google Ads campaign and asset data…</div>':"")
+    +'<div class="grid three">'+kpi("Spend",fmtMoney(spend))+kpi("Impressions",fmtNum(impressions))+kpi("Clicks",fmtNum(clicks))+kpi("Conversions",fmtNum(conversions))+kpi("CTR",fmtPct(ctr))+kpi("Avg. CPC",fmtMoney(cpc))+'</div></div>'
+    +'<div class="grid two" style="margin-bottom:16px"><div class="card"><div class="section-head"><h3>Daily spend trend</h3><span class="badge green">Live API data</span></div>'+googleAdsTrendChart(rows)+'</div>'
+    +'<div class="card"><h3>Performance snapshot</h3><div class="grid" style="gap:12px;margin-top:16px">'
+    +[['Clicks',clicks],['Impressions',impressions],['Conversions',conversions]].map(([label,value])=>'<div><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span>'+label+'</span><b>'+fmtNum(value)+'</b></div><div style="height:8px;background:#eef1f4;border-radius:20px;overflow:hidden"><div style="height:100%;width:'+Math.min(100,(Number(value)/(Math.max(clicks,impressions,conversions,1)))*100)+'%;background:var(--green);border-radius:20px"></div></div></div>').join('')
+    +'</div><p class="muted" style="font-size:12px">Bars compare the relative totals for this date range.</p></div></div>'
+    +'<div class="card" style="margin-bottom:16px"><div class="section-head"><h3>Google Ads Campaigns</h3><span class="badge '+(data?.connected?'green':'orange')+'">'+(data?.connected?'Live API data':'Waiting for account assignment')+'</span></div>'
+    +(rows.length?'<div style="overflow-x:auto"><table class="table"><thead><tr><th>Campaign</th><th>Status</th><th>Channel</th><th>Date</th><th>Spend</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Conversions</th><th>Avg. CPC</th></tr></thead><tbody>'+rows.map(c=>'<tr><td>'+esc(c.campaignName||"—")+'<div class="muted">'+esc(c.customerName||"")+'</div></td><td><span class="badge '+(c.campaignStatus==="ENABLED"?'green':'orange')+'">'+esc(c.campaignStatus||"—")+'</span></td><td>'+esc(String(c.channel||"—").replace(/_/g," "))+'</td><td>'+esc(c.date||"—")+'</td><td>'+fmtMoney(c.spend)+'</td><td>'+fmtNum(c.impressions)+'</td><td>'+fmtNum(c.clicks)+'</td><td>'+fmtPct(c.ctr)+'</td><td>'+fmtNum(c.conversions)+'</td><td>'+fmtMoney(c.averageCpc)+'</td></tr>').join("")+'</tbody></table></div>':(data?.connected&&!googleAdsReportState.loading?'<div class="muted" style="padding:24px 0">No campaign activity was returned for this date range.</div>':""))
+    +'</div>'
+    +'<div class="card"><div class="section-head"><div><h3>Google Ads Asset Performance</h3><p class="muted" style="margin:5px 0 0">Creative assets returned by the Google Ads API, including asset type, performance label and engagement.</p></div><span class="badge '+(assetData?.connected?'green':'orange')+'">'+(assetData?.connected?'Asset API data':'Awaiting asset data')+'</span></div>'
+    +assetWarning
+    +(assetRows.length?'<div style="overflow-x:auto"><table class="table"><thead><tr><th>Asset</th><th>Campaign / Asset group</th><th>Type</th><th>Performance</th><th>Status</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Spend</th><th>Conversions</th></tr></thead><tbody>'+assetRows.slice(0,100).map(a=>'<tr><td>'+esc(a.text||a.assetId||"Image / media asset")+(a.imageUrl?'<div><a href="'+esc(a.imageUrl)+'" target="_blank" rel="noopener">Preview image</a></div>':"")+'</td><td>'+esc(a.campaignName||"—")+'<div class="muted">'+esc(a.assetGroupName||"")+'</div></td><td>'+esc(String(a.fieldType||a.assetType||"—").replace(/_/g," "))+'</td><td>'+esc(String(a.performanceLabel||"—").replace(/_/g," "))+'</td><td>'+esc(a.status||"—")+'</td><td>'+fmtNum(a.impressions)+'</td><td>'+fmtNum(a.clicks)+'</td><td>'+fmtPct(a.ctr)+'</td><td>'+fmtMoney(a.spend)+'</td><td>'+fmtNum(a.conversions)+'</td></tr>').join("")+'</tbody></table></div>':'<div class="muted" style="padding:24px 0">'+(googleAdsReportState.loading?'Loading assets…':'No Performance Max asset rows were returned for this date range. Asset-group reporting is currently supported by this table; other Google Ads asset formats may not appear here.')+'</div>')
+    +'</div>';
 }
 
 function campaigns(){
