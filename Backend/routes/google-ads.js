@@ -63,14 +63,22 @@ async function googleAdsRequest(accessToken, customerId, method, body) {
     "Content-Type": "application/json"
   };
   if (c.managerCustomerId) headers["login-customer-id"] = c.managerCustomerId;
-  // Google Ads SearchStream/Search REST methods use the custom-method
-  // URL form /customers/{customerId}:search (not /googleAds:search).
-  const apiMethod = String(method || "").endsWith(":search") ? "search" : String(method || "");
+  // Google Ads Search REST endpoint is /customers/{customerId}/googleAds:search.
+  const apiMethod = String(method || "").endsWith(":search") ? "googleAds:search" : String(method || "");
   const response = await fetch(
-    `https://googleads.googleapis.com/${API_VERSION}/customers/${normalizeCustomerId(customerId)}:${apiMethod}`,
+    `https://googleads.googleapis.com/${API_VERSION}/customers/${normalizeCustomerId(customerId)}/${apiMethod}`,
     { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }
   );
-  const result = await response.json();
+  const responseText = await response.text();
+  let result;
+  try {
+    result = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    const err = new Error(`Google Ads endpoint returned non-JSON content (HTTP ${response.status}). Check API URL/version and Hostinger proxy response.`);
+    err.httpStatus = response.status;
+    err.googleAds = true;
+    throw err;
+  }
   if (!response.ok) {
     const detail = result?.error?.details?.[0]?.errors?.[0]?.message || result?.error?.message || "Google Ads API request failed";
     const err = new Error(detail);
