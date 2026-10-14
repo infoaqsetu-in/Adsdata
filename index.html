@@ -664,6 +664,7 @@ const state = {
   leadStatus: "All Leads",
   campaignPlatform: "meta",
   seoDateRange: "May 01 – May 31, 2026",
+  seoShowAllKeywords: false,
   user: null,
   client: null,
   dashboard: null,
@@ -2260,12 +2261,9 @@ function seo(){
             Top Performing Keywords
           </h3>
 
-          <span style="
-            color:var(--purple);
-            font-size:12px
-          ">
-            View All
-          </span>
+          <button class="btn btn-light" onclick="state.seoShowAllKeywords=!state.seoShowAllKeywords;render()">
+            ${state.seoShowAllKeywords ? "Show Less" : "View All"}
+          </button>
 
         </div>
 
@@ -2283,11 +2281,16 @@ function seo(){
 
           <tbody>
 
-            ${[
+            ${([
               ["digital marketing agency","5","+3"],
               ["seo agency ahmedabad","8","+2"],
-              ["social media agency","12","+5"]
-            ].map(item => `
+              ["social media agency","12","+5"],
+              ["digital marketing company ahmedabad","14","+4"],
+              ["SEO services Ahmedabad","16","+2"],
+              ["social media marketing agency","18","+1"],
+              ["website development Ahmedabad","21","+3"],
+              ["online marketing services","24","+2"]
+            ].slice(0,state.seoShowAllKeywords?8:3)).map(item => `
 
               <tr>
 
