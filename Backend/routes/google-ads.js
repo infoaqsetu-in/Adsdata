@@ -637,7 +637,7 @@ module.exports = (supabase, authenticateToken) => {
       if (!clientId) return fail(res, 400, "clientId is required");
       if (req.user.role !== "admin" && clientId !== String(req.user.clientId)) return fail(res, 403, "You cannot access another client data");
       const startDate = String(req.query.startDate || ""), endDate = String(req.query.endDate || "");
-      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(startDate) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(endDate) || startDate > endDate) return fail(res, 400, "Valid startDate and endDate are required");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate) return fail(res, 400, "Valid startDate and endDate are required");
       const { data, error } = await supabase.from("google_ads_daily_snapshots").select("*").eq("client_id", clientId).gte("snapshot_date", startDate).lte("snapshot_date", endDate).order("snapshot_date", { ascending: true });
       if (error) throw error;
       res.json({ success: true, snapshots: data || [], startDate, endDate, source: "Stored daily snapshots" });
