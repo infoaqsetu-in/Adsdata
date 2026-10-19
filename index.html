@@ -2460,11 +2460,15 @@ async function syncSocialCalendarFromMeta(){
  try{
   const payload=admin?{clientId}:{};
   const d=await apiRequest("/api/meta/social/sync",{method:"POST",body:JSON.stringify(payload)});
-  const note=document.getElementById("social-meta-sync-note");
-  if(note)note.textContent="Meta sync complete: "+(d.postsSynced||0)+" posts checked across "+(d.pagesSynced||0)+" Pages.";
   await loadSocialCalendar();
-  const fresh=document.getElementById("social-meta-sync-note");
-  if(fresh)fresh.textContent="Meta sync complete: "+(d.postsSynced||0)+" posts checked across "+(d.pagesSynced||0)+" Pages.";
+  const calendar=document.getElementById("social-calendar-live");
+  if(calendar){
+   const note=document.createElement("div");
+   note.className="muted";
+   note.style.padding="8px 0";
+   note.textContent="Meta sync complete: "+(d.postsSynced||0)+" posts imported or updated across "+(d.pagesSynced||0)+" Pages.";
+   calendar.prepend(note);
+  }
  }catch(e){
   const note=document.getElementById("social-meta-sync-note");
   if(note)note.textContent="Meta sync could not complete: "+e.message;
