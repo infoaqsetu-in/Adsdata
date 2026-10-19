@@ -428,16 +428,14 @@ module.exports = (supabase, authenticateToken) => {
       for (const account of mappings) {
         try {
           const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
-            query: `SELECT customer.id, campaign.id, campaign.name, campaign.status, segments.date, metrics.phone_calls, metrics.phone_impressions, metrics.phone_through_rate, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
+            query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, segments.date, metrics.phone_calls, metrics.phone_impressions, metrics.phone_through_rate, metrics.cost_micros, metrics.conversions FROM customer WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
           });
           for (const row of result.results || []) {
             const m = row.metrics || {};
             all.push({
               customerId: String(row.customer?.id || account.customer_id),
-              customerName: account.customer_name || "",
-              campaignId: String(row.campaign?.id || ""),
-              campaignName: row.campaign?.name || "—",
-              campaignStatus: row.campaign?.status || "—",
+              customerName: row.customer?.descriptiveName || account.customer_name || account.customer_id,
+              currencyCode: row.customer?.currencyCode || account.currency_code || "",
               date: row.segments?.date || "",
               calls: Number(m.phoneCalls || 0),
               phoneImpressions: Number(m.phoneImpressions || 0),
