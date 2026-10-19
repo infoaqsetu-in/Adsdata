@@ -674,6 +674,8 @@ const state = {
   dashboard: null,
   dashboardLoading: false,
   dashboardError: null,
+  googleDashboardData: null,
+  googleDashboardError: null,
   meta: {
     status: null,        // response of /api/meta/status
     accounts: null,      // response of /api/meta/accounts
@@ -1191,6 +1193,21 @@ async function loadDashboard() {
 
     if(data.success){
       state.dashboard = data;
+    }
+
+    // Keep Google Ads metrics separate from Meta/manual totals.
+    try {
+      const clientId = state.client?.id || state.user?.clientId;
+      if (!clientId) throw new Error("Your portal user is not linked to a client.");
+      const now = new Date();
+      const start = new Date(now);
+      start.setDate(start.getDate() - 29);
+      const iso = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+      state.googleDashboardData = await apiRequest("/api/google-ads/campaigns?clientId="+encodeURIComponent(clientId)+"&startDate="+iso(start)+"&endDate="+iso(now));
+      state.googleDashboardError = "";
+    } catch (googleError) {
+      state.googleDashboardData = null;
+      state.googleDashboardError = googleError.message || "Google Ads dashboard metrics are unavailable.";
     }
 
   } catch(error){
@@ -1974,6 +1991,23 @@ function dashboard(){
       ${kpi("Clicks", fmtNum(m.totalClicks), `CTR ${fmtPct(m.ctr)}`)}
       ${kpi("Total Leads", fmtNum(m.totalLeads), m.cpl === null || m.cpl === undefined ? "No lead data" : `CPL ${fmtMoney(m.cpl)}`)}
       ${kpi("ROAS", m.roas === null || m.roas === undefined ? "—" : `${Number(m.roas).toFixed(2)}×`, m.roas === null || m.roas === undefined ? "No revenue data" : "Reported by Meta")}
+    </div>
+
+    <div style="height:16px"></div>
+
+    <div class="card" style="margin-bottom:16px">
+      <div class="section-head">
+        <div><h3>Google Ads Performance</h3><div class="muted">Last 30 days · Google Ads reporting API</div></div>
+        <button class="btn btn-light" onclick="loadDashboard().then(render)">Refresh Google Ads</button>
+      </div>
+      ${state.googleDashboardError ? `<div class="error-message">${esc(state.googleDashboardError)}</div>` : ""}
+      ${(() => {
+        const rows = state.googleDashboardData?.campaigns || [];
+        const total = key => rows.reduce((sum, row) => sum + Number(row[key] || 0), 0);
+        if (!rows.length) return `<div class="muted" style="padding:16px 0">${state.googleDashboardData?.connected === false ? "No Google Ads account is assigned to this client." : "No Google Ads campaign data returned for the last 30 days."}</div>`;
+        const spend = total("spend"), impressions = total("impressions"), clicks = total("clicks"), conversions = total("conversions");
+        return `<div class="grid four">${kpi("Google Ads Spend", fmtMoney(spend), "Last 30 days")}${kpi("Google Ads Impressions", fmtNum(impressions), "Last 30 days")}${kpi("Google Ads Clicks", fmtNum(clicks), impressions ? "CTR " + fmtPct(clicks / impressions * 100) : "No impressions")}${kpi("Google Ads Conversions", fmtNum(conversions), "Last 30 days")}</div>`;
+      })()}
     </div>
 
     <div style="height:16px"></div>
