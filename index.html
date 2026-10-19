@@ -911,8 +911,8 @@ async function handleGoogleCredential(response){
     });
     const data=await result.json();
     if(!result.ok || !data.success) throw new Error(data.message || "Google sign-in failed.");
-    localStorage.setItem("aqsetu_token",data.token);
-    localStorage.setItem("aqsetu_user",JSON.stringify(data.user));
+    sessionStorage.setItem("aqsetu_token",data.token);
+    sessionStorage.setItem("aqsetu_user",JSON.stringify(data.user));
     state.loggedIn=true;
     state.user=data.user;
     await loadClient();
@@ -1040,7 +1040,7 @@ async function doLogin(){
 async function loadClient(){
 
   const token =
-    localStorage.getItem("aqsetu_token");
+    sessionStorage.getItem("aqsetu_token");
 
   if(!token){
 
@@ -1093,7 +1093,7 @@ async function loadClient(){
       error
     );
 
-    localStorage.removeItem("aqsetu_token");
+    sessionStorage.removeItem("aqsetu_token");
 
     state.loggedIn = false;
     state.user = null;
@@ -1418,8 +1418,8 @@ async function reloadDashboard(){
 
 function logout(){
 
-  localStorage.removeItem("aqsetu_token");
-  localStorage.removeItem("aqsetu_user");
+  sessionStorage.removeItem("aqsetu_token");
+  sessionStorage.removeItem("aqsetu_user");
 
   state.loggedIn = false;
   state.user = null;
@@ -1445,7 +1445,7 @@ async function apiRequest(
 ){
 
   const token =
-    localStorage.getItem("aqsetu_token");
+    sessionStorage.getItem("aqsetu_token");
 
   if(!token){
 
@@ -2888,10 +2888,10 @@ function render(){
 async function initializeApp(){
 
   const token =
-    localStorage.getItem("aqsetu_token");
+    sessionStorage.getItem("aqsetu_token");
 
   const savedUser =
-    localStorage.getItem("aqsetu_user");
+    sessionStorage.getItem("aqsetu_user");
 
   if(token){
 
