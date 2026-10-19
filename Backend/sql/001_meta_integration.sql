@@ -82,6 +82,9 @@ alter table public.social_posts
   add column if not exists comments_count bigint,
   add column if not exists updated_at timestamptz not null default now();
 
-create unique index if not exists social_posts_platform_post_id_unique
-  on public.social_posts (platform, platform_post_id)
+-- A Meta post must be unique within a client, not globally across all clients.
+-- Drop the earlier global index because it can reassign a post to whichever client syncs last.
+drop index if exists public.social_posts_platform_post_id_unique;
+create unique index if not exists social_posts_client_platform_post_id_unique
+  on public.social_posts (client_id, platform, platform_post_id)
   where platform_post_id is not null;
