@@ -312,14 +312,8 @@ module.exports = (supabase, authenticateToken) => {
     const clientId=String(req.query.clientId||"");
     if(!clientId)return fail(res,400,"clientId is required");
     try {
-      let conn=await getConnection(clientId);
-      if(!conn){
-        const {data:source,error}=await supabase.from("meta_connections").select("*")
-          .eq("status","active").not("access_token","is",null).order("updated_at",{ascending:false}).limit(1).maybeSingle();
-        if(error)throw error;
-        if(!source)return fail(res,404,"Connect Meta to the agency first");
-        conn={...source,token:decryptToken(source.access_token)};
-      }
+      const conn=await getConnection(clientId);
+      if(!conn)return fail(res,404,"No active Meta connection is assigned to this client. Connect or assign the correct client account first.");
       const pages=await meta.listPages(conn.token);
       res.json({success:true,pages:pages.map(p=>({id:p.id,name:p.name,instagramAccount:p.instagram_business_account?{id:p.instagram_business_account.id,username:p.instagram_business_account.username}:null}))});
     } catch(err){await handleError(req,res,err,"meta-social-accounts");}
@@ -369,7 +363,7 @@ module.exports = (supabase, authenticateToken) => {
           }
         }
         for(let i=0;i<rows.length;i+=100){
-          const {error}=await supabase.from("social_posts").upsert(rows.slice(i,i+100),{onConflict:"platform,platform_post_id"});
+          const {error}=await supabase.from("social_posts").upsert(rows.slice(i,i+100),{onConflict:"client_id,platform,platform_post_id"});
           if(error)throw error;synced+=Math.min(100,rows.length-i);
         }
       }
