@@ -74,7 +74,10 @@ create index if not exists meta_account_permissions_client_idx
 -- Keep existing manually entered posts; these are additive columns.
 alter table public.social_posts
   add column if not exists platform_post_id text,
+  add column if not exists media_url text,
+  add column if not exists post_url text,
   add column if not exists published_at timestamptz,
+  add column if not exists scheduled_at timestamptz,
   add column if not exists likes_count bigint,
   add column if not exists comments_count bigint,
   add column if not exists updated_at timestamptz not null default now();
