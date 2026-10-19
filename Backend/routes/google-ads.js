@@ -415,10 +415,11 @@ module.exports = (supabase, authenticateToken) => {
       if (req.user.role !== "admin" && clientId !== String(req.user.clientId)) return fail(res, 403, "You cannot access another client's Google Ads data");
       const startDate = String(req.query.startDate || "");
       const endDate = String(req.query.endDate || "");
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate) {
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(startDate) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(endDate) || startDate > endDate) {
         return fail(res, 400, "Valid startDate and endDate (YYYY-MM-DD) are required");
       }
-      const { data: mappings, error } = await supabase.from("google_ads_client_accounts").select("customer_id,customer_name,currency_code").eq("client_id", clientId);
+      const { data: mappings, error } = await supabase.from("google_ads_client_accounts")
+        .select("customer_id,customer_name,currency_code").eq("client_id", clientId);
       if (error) throw error;
       if (!mappings?.length) return res.json({ success: true, connected: false, calls: [], message: "No Google Ads account is assigned to this client." });
       const conn = await getConnection(supabase);
@@ -427,46 +428,46 @@ module.exports = (supabase, authenticateToken) => {
       const all = [], warnings = [];
       for (const account of mappings) {
         try {
+          // Match Google Ads > Assets > Associations > Call at account level.
+          // Campaign-level metrics.phone_calls can be zero even when a Call asset has
+          // clicks/conversions, so report the actual customer-level Call asset metrics.
           const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
-            query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, segments.date, metrics.phone_calls, metrics.phone_impressions, metrics.phone_through_rate, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
+            query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, segments.date, customer_asset.asset, customer_asset.field_type, customer_asset.status, asset.type, asset.call_asset.phone_number, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions FROM customer_asset WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' AND asset.type = CALL ORDER BY segments.date DESC`
           });
           const rows = result.results || [];
-          // Pull conversions attributed specifically to phone-call conversion actions.
-          // Keep this separate from metrics.phone_calls and total conversions.
-          let phoneCallConversions = [];
-          try {
-            const conversionResult = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
-              query: `SELECT segments.date, segments.conversion_action_category, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' AND segments.conversion_action_category = 'PHONE_CALL_LEAD' ORDER BY segments.date DESC`
-            });
-            phoneCallConversions = conversionResult.results || [];
-          } catch (conversionError) {
-            warnings.push((account.customer_name || account.customer_id) + ": phone-call conversion breakdown unavailable: " + conversionError.message);
-          }
-          const conversionsByDate = new Map();
-          for (const conversionRow of phoneCallConversions) {
-            const date = conversionRow.segments?.date || "";
-            conversionsByDate.set(date, (conversionsByDate.get(date) || 0) + Number(conversionRow.metrics?.conversions || 0));
-          }
           for (const row of rows) {
             const m = row.metrics || {};
+            const asset = row.asset || {};
+            const customerAsset = row.customerAsset || {};
+            const impressions = Number(m.impressions || 0);
+            const clicks = Number(m.clicks || 0);
             all.push({
               customerId: String(row.customer?.id || account.customer_id),
               customerName: row.customer?.descriptiveName || account.customer_name || account.customer_id,
               currencyCode: row.customer?.currencyCode || account.currency_code || "",
               date: row.segments?.date || "",
-              calls: Number(m.phoneCalls || 0),
-              phoneCallConversions: Number(conversionsByDate.get(row.segments?.date || "") || 0),
-              phoneImpressions: Number(m.phoneImpressions || 0),
-              phoneThroughRate: Number(m.phoneThroughRate || 0) * 100,
+              assetType: "CALL",
+              phoneNumber: asset.callAsset?.phoneNumber || "",
+              status: customerAsset.status || "—",
+              calls: clicks,
+              phoneCallConversions: Number(m.conversions || 0),
+              phoneImpressions: impressions,
+              phoneThroughRate: impressions ? clicks / impressions * 100 : 0,
               spend: Number((Number(m.costMicros || 0) / 1000000).toFixed(2)),
-              conversions: Number(m.conversions || 0)
+              conversions: Number(m.conversions || 0),
+              clicks,
+              impressions
             });
           }
         } catch (callError) {
           warnings.push((account.customer_name || account.customer_id) + ": " + callError.message);
         }
       }
-      res.json({ success: true, connected: true, startDate, endDate, calls: all, warnings, source: "Google Ads API" });
+      res.json({
+        success: true, connected: true, startDate, endDate, calls: all, warnings,
+        source: "Google Ads customer-level Call assets",
+        note: "Call asset clicks and conversions are reported from the Call asset itself; these are not necessarily completed phone calls."
+      });
     } catch (e) {
       console.error("Google Ads calls:", e.message);
       if (e.googleAds) return fail(res, 502, "Google Ads calls report error: " + e.message, "GOOGLE_ADS_CALLS_API_ERROR");
