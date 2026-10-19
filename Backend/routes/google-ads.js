@@ -428,7 +428,7 @@ module.exports = (supabase, authenticateToken) => {
       for (const account of mappings) {
         try {
           const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
-            query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, segments.date, metrics.phone_calls, metrics.phone_impressions, metrics.phone_through_rate, metrics.cost_micros, metrics.conversions FROM customer WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
+            query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, segments.date, metrics.phone_calls, metrics.phone_impressions, metrics.phone_through_rate, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
           });
           for (const row of result.results || []) {
             const m = row.metrics || {};
