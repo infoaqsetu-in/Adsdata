@@ -613,7 +613,7 @@ module.exports = (supabase, authenticateToken) => {
       for (const account of mappings) {
         try {
           const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
-            query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, campaign.id, campaign.name, asset_group.id, asset_group.name, asset_group_asset.asset, asset_group_asset.field_type, asset_group_asset.status, asset_group_asset.performance_label, asset.type, asset.text_asset.text, asset.image_asset.full_size.url, segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.ctr FROM asset_group_asset WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
+            query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, campaign.id, campaign.name, asset_group.id, asset_group.name, asset_group_asset.asset, asset_group_asset.field_type, asset_group_asset.status, asset.type, asset.text_asset.text, asset.image_asset.full_size.url, segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.ctr FROM asset_group_asset WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
           });
           for (const row of result.results || []) {
             const m = row.metrics || {}, asset = row.asset || {}, ag = row.assetGroupAsset || {};
@@ -625,7 +625,7 @@ module.exports = (supabase, authenticateToken) => {
               assetId: String(asset.id || ""),
               assetType: asset.type || ag.fieldType || "—",
               fieldType: ag.fieldType || "—",
-              performanceLabel: ag.performanceLabel || "—",
+              performanceLabel: "—",
               status: ag.status || "—",
               text: asset.textAsset?.text || "",
               imageUrl: asset.imageAsset?.fullSize?.url || "",
