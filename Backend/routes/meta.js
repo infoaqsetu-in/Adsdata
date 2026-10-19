@@ -307,12 +307,25 @@ module.exports = (supabase, authenticateToken) => {
 
 
   // Organic Page assignments are independent of Meta ad-account permissions.
-  async function getOrganicDirectoryConnection() {
+  async function getOrganicDirectoryPages() {
     const { data, error } = await supabase.from("meta_connections")
       .select("*").eq("status", "active").not("access_token", "is", null)
-      .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      .order("updated_at", { ascending: false });
     if (error) throw error;
-    return data ? { ...data, token: decryptToken(data.access_token) } : null;
+    const byId = new Map();
+    for (const row of data || []) {
+      try {
+        const token = decryptToken(row.access_token);
+        const pages = await meta.listPages(token);
+        for (const page of pages) {
+          const key = String(page.id);
+          if (!byId.has(key)) byId.set(key, { ...page, _accessToken: token });
+        }
+      } catch (err) {
+        console.warn("Unable to enumerate organic Pages for a Meta connection:", err?.code || err?.message || err);
+      }
+    }
+    return Array.from(byId.values());
   }
 
   router.get("/social/accounts", authenticateToken, async (req, res) => {
@@ -320,12 +333,11 @@ module.exports = (supabase, authenticateToken) => {
     const clientId = String(req.query.clientId || "");
     if (!clientId) return fail(res, 400, "clientId is required");
     try {
-      const conn = await getOrganicDirectoryConnection();
-      if (!conn) return fail(res, 404, "No active Meta connection is available. Connect Meta in Integrations first.");
       const [pages, assignedResult] = await Promise.all([
-        meta.listPages(conn.token),
+        getOrganicDirectoryPages(),
         supabase.from("client_social_page_permissions").select("page_id,is_allowed").eq("client_id", clientId)
       ]);
+      if (!pages.length) return fail(res, 404, "No Facebook Pages are accessible from the active Meta connections. Connect the agency Meta account with Page permissions.");
       if (assignedResult.error) throw assignedResult.error;
       const rows = assignedResult.data || [];
       const hasExplicitPermissions = rows.length > 0;
@@ -349,9 +361,8 @@ module.exports = (supabase, authenticateToken) => {
       const { data: client, error: clientError } = await supabase.from("clients").select("id").eq("id", clientId).maybeSingle();
       if (clientError) throw clientError;
       if (!client) return fail(res, 404, "Selected client was not found");
-      const conn = await getOrganicDirectoryConnection();
-      if (!conn) return fail(res, 404, "No active Meta connection is available. Connect Meta in Integrations first.");
-      const pages = await meta.listPages(conn.token);
+      const pages = await getOrganicDirectoryPages();
+      if (!pages.length) return fail(res, 404, "No Facebook Pages are accessible from the active Meta connections. Connect the agency Meta account with Page permissions.");
       const pageById = new Map(pages.map(p => [String(p.id), p]));
       if (pageIds.some(id => !pageById.has(id))) return fail(res, 400, "One or more Pages are not accessible through the connected Meta account");
       const { error: deleteError } = await supabase.from("client_social_page_permissions").delete().eq("client_id", clientId);
@@ -376,8 +387,8 @@ module.exports = (supabase, authenticateToken) => {
     const clientId = isAdmin ? String(req.body?.clientId || "") : String(req.user.clientId || "");
     if (!clientId) return fail(res, 400, "clientId is required");
     try {
-      const conn = await getOrganicDirectoryConnection();
-      if (!conn) return fail(res, 404, "No active Meta connection is available. Connect Meta in Integrations first.");
+      const pages = await getOrganicDirectoryPages();
+      if (!pages.length) return fail(res, 404, "No Facebook Pages are accessible from the active Meta connections. Connect the agency Meta account with Page permissions.");
       const { data: permissions, error: permissionError } = await supabase.from("client_social_page_permissions")
         .select("page_id").eq("client_id", clientId).eq("is_allowed", true);
       if (permissionError) throw permissionError;
@@ -385,22 +396,21 @@ module.exports = (supabase, authenticateToken) => {
       const requested = Array.isArray(req.body?.pageIds) ? req.body.pageIds.map(String) : [];
       if (isAdmin && requested.some(id => !allowedIds.has(id))) return fail(res, 403, "Select only Pages assigned to this client. Save Page permissions first.");
       if (!allowedIds.size) return fail(res, 409, "No organic Pages are assigned to this client. Ask the agency admin to assign Pages in Integrations.");
-      const allPages = await meta.listPages(conn.token);
-      const selected = allPages.filter(p => allowedIds.has(String(p.id)) && (!isAdmin || requested.length === 0 || requested.includes(String(p.id))));
+      const selected = pages.filter(p => allowedIds.has(String(p.id)) && (!isAdmin || requested.length === 0 || requested.includes(String(p.id))));
       if (selected.length !== allowedIds.size) return fail(res, 409, "Some assigned Pages are no longer accessible through Meta. Review Page permissions in Integrations.");
       let synced = 0;
       const warnings = [];
       for (const p of selected) {
         const rows = [];
         try {
-          const published = await meta.listPagePublishedPosts(p.id, p.access_token);
+          const published = await meta.listPagePublishedPosts(p.id, p.access_token || p._accessToken);
           rows.push(...published.map(x => ({client_id:clientId,platform:"facebook",caption:x.message||"(No caption)",media_url:x.full_picture||null,post_url:x.permalink_url||null,platform_post_id:x.id,status:"published",published_at:x.created_time||null,scheduled_at:x.created_time||null,likes_count:x.likes?.summary?.total_count??null,comments_count:x.comments?.summary?.total_count??null,updated_at:new Date().toISOString()})));
         } catch (e) {
           if (e.metaCode === 10 || /pages_read_engagement|Page Public Content Access/i.test(e.message || "")) warnings.push("Facebook published posts unavailable: grant pages_read_engagement or Page Public Content Access, then reconnect.");
           else throw e;
         }
         try {
-          const scheduled = await meta.listPageScheduledPosts(p.id, p.access_token);
+          const scheduled = await meta.listPageScheduledPosts(p.id, p.access_token || p._accessToken);
           rows.push(...scheduled.map(x => ({client_id:clientId,platform:"facebook",caption:x.message||"(No caption)",media_url:x.full_picture||null,post_url:x.permalink_url||null,platform_post_id:x.id,status:"scheduled",scheduled_at:x.scheduled_publish_time?new Date(Number(x.scheduled_publish_time)*1000).toISOString():null,updated_at:new Date().toISOString()})));
         } catch (e) {
           if (e.metaCode === 100 || e.metaCode === 10) warnings.push("Scheduled Facebook posts are not accessible for at least one assigned Page.");
@@ -409,7 +419,7 @@ module.exports = (supabase, authenticateToken) => {
         const igId = p.instagram_business_account?.id;
         if (igId) {
           try {
-            const media = await meta.listInstagramMedia(igId, conn.token);
+            const media = await meta.listInstagramMedia(igId, p.access_token || p._accessToken);
             rows.push(...media.map(x => ({client_id:clientId,platform:"instagram",caption:x.caption||"(No caption)",media_url:x.media_url||null,post_url:x.permalink||null,platform_post_id:x.id,status:"published",published_at:x.timestamp||null,scheduled_at:x.timestamp||null,likes_count:x.like_count??null,comments_count:x.comments_count??null,updated_at:new Date().toISOString()})));
           } catch (e) {
             if (e.metaCode === 10 || e.metaCode === 100) warnings.push("Instagram media unavailable: verify the linked professional account and Meta permissions.");
