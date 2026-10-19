@@ -2242,6 +2242,16 @@ function metaCampaigns(){
 
 
 
+async function applyGoogleAdsComparisonDates(){
+  const start=document.getElementById("google-comparison-start")?.value||"";
+  const end=document.getElementById("google-comparison-end")?.value||"";
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)){alert("Please select both dates.");return;}
+  if(start>end){alert("Start date must be on or before end date.");return;}
+  googleAdsReportState.startDate=start;
+  googleAdsReportState.endDate=end;
+  await loadGoogleAdsCampaigns();
+}
+
 async function loadGoogleAdsCampaigns(){
   if(googleAdsReportState.loading) return;
   googleAdsReportState.loading = true;
@@ -2252,8 +2262,8 @@ async function loadGoogleAdsCampaigns(){
     start.setDate(start.getDate()-29);
     const iso = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
     const range = state.dashboard?.dateRange || {};
-    const startDate = /^\d{4}-\d{2}-\d{2}$/.test(range.start || "") ? range.start : iso(start);
-    const endDate = /^\d{4}-\d{2}-\d{2}$/.test(range.stop || "") ? range.stop : iso(now);
+    const startDate = /^\d{4}-\d{2}-\d{2}$/.test(googleAdsReportState.startDate || "") ? googleAdsReportState.startDate : (/^\d{4}-\d{2}-\d{2}$/.test(range.start || "") ? range.start : iso(start));
+    const endDate = /^\d{4}-\d{2}-\d{2}$/.test(googleAdsReportState.endDate || "") ? googleAdsReportState.endDate : (/^\d{4}-\d{2}-\d{2}$/.test(range.stop || "") ? range.stop : iso(now));
     googleAdsReportState.startDate = startDate;
     googleAdsReportState.endDate = endDate;
     const clientId = state.client?.id || state.user?.clientId;
@@ -2382,11 +2392,12 @@ function googleAdsCampaigns(){
     +(rows.length?'<div style="overflow-x:auto"><table class="table"><thead><tr><th>Campaign</th><th>Status</th><th>Channel</th><th>Date</th><th>Spend</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Conversions</th><th>Avg. CPC</th></tr></thead><tbody>'+rows.map(c=>'<tr><td>'+esc(c.campaignName||"—")+'<div class="muted">'+esc(c.customerName||"")+'</div></td><td><span class="badge '+(c.campaignStatus==="ENABLED"?'green':'orange')+'">'+esc(c.campaignStatus||"—")+'</span></td><td>'+esc(String(c.channel||"—").replace(/_/g," "))+'</td><td>'+esc(c.date||"—")+'</td><td>'+fmtMoney(c.spend)+'</td><td>'+fmtNum(c.impressions)+'</td><td>'+fmtNum(c.clicks)+'</td><td>'+fmtPct(c.ctr)+'</td><td>'+fmtNum(c.conversions)+'</td><td>'+fmtMoney(c.averageCpc)+'</td></tr>').join("")+'</tbody></table></div>':(data?.connected&&!googleAdsReportState.loading?'<div class="muted" style="padding:24px 0">No campaign activity was returned for this date range.</div>':""))
     +'</div>'
     +'</div>'
-    +'<div data-google-subtab="assets"><div class="card"><div class="section-head"><div><h3>Google Ads Asset Performance</h3><p class="muted" style="margin:5px 0 0">Creative assets returned by the Google Ads API, including asset type, performance label and engagement.</p></div><span class="badge '+(assetData?.connected?'green':'orange')+'">'+(assetData?.connected?'Asset API data':'Awaiting asset data')+'</span></div>'
-    +assetWarning
-    +(assetRows.length?'<div style="overflow-x:auto"><table class="table"><thead><tr><th>Asset</th><th>Campaign / Asset group</th><th>Type</th><th>Performance</th><th>Status</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Spend</th><th>Conversions</th></tr></thead><tbody>'+assetRows.slice(0,100).map(a=>'<tr><td>'+esc(a.text||a.assetId||"Image / media asset")+(a.imageUrl?'<div><a href="'+esc(a.imageUrl)+'" target="_blank" rel="noopener">Preview image</a></div>':"")+'</td><td>'+esc(a.campaignName||"—")+'<div class="muted">'+esc(a.assetGroupName||"")+'</div></td><td>'+esc(String(a.fieldType||a.assetType||"—").replace(/_/g," "))+'</td><td>'+esc(String(a.performanceLabel||"—").replace(/_/g," "))+'</td><td>'+esc(a.status||"—")+'</td><td>'+fmtNum(a.impressions)+'</td><td>'+fmtNum(a.clicks)+'</td><td>'+fmtPct(a.ctr)+'</td><td>'+fmtMoney(a.spend)+'</td><td>'+fmtNum(a.conversions)+'</td></tr>').join("")+'</tbody></table></div>':'<div class="muted" style="padding:24px 0">'+(googleAdsReportState.loading?'Loading assets…':'No Performance Max asset rows were returned for this date range. Asset-group reporting is currently supported by this table; other Google Ads asset formats may not appear here.')+'</div>')
-    +'</div>'
-    +'<div data-google-subtab="comparison"><div class="card" style="margin-bottom:16px"><div class="section-head"><h3>Previous-period comparison</h3><span class="badge">Same-length period</span></div>'+(()=>{const prev=googleAdsReportState.comparisonData?.campaigns||[];const total=(arr,key)=>arr.reduce((n,r)=>n+Number(r[key]||0),0);const curr={spend,clicks,impressions,conversions};const prior={spend:total(prev,"spend"),clicks:total(prev,"clicks"),impressions:total(prev,"impressions"),conversions:total(prev,"conversions")};return '<div class="grid four">'+Object.keys(curr).map(key=>{const change=prior[key]?(curr[key]-prior[key])/prior[key]*100:null;const changeLabel=change===null?(curr[key]?"New":"—"):(change>0?"+":"")+change.toFixed(1)+"%";return '<div><div class="label">'+key.charAt(0).toUpperCase()+key.slice(1)+'</div><div class="value">'+changeLabel+'</div><div class="muted">Current: '+fmtNum(curr[key])+'</div><div class="muted">Previous: '+fmtNum(prior[key])+'</div></div>';}).join('')+'</div>';})()+'</div>'
+    +'<div data-google-subtab="comparison"><div class="card" style="margin-bottom:16px"><div class="section-head"><h3>Date-wise comparison</h3><span class="badge">Select date range</span></div>'
+    +'<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin:12px 0 18px">'
+    +'<div class="field"><label for="google-comparison-start">Start date</label><input id="google-comparison-start" type="date" value="'+esc(googleAdsReportState.startDate||startDate)+'" max="'+esc(googleAdsReportState.endDate||endDate)+'" onchange="googleAdsReportState.startDate=this.value"></div>'
+    +'<div class="field"><label for="google-comparison-end">End date</label><input id="google-comparison-end" type="date" value="'+esc(googleAdsReportState.endDate||endDate)+'" min="'+esc(googleAdsReportState.startDate||startDate)+'" onchange="googleAdsReportState.endDate=this.value"></div>'
+    +'<button class="btn btn-primary" onclick="applyGoogleAdsComparisonDates()">Compare dates</button></div>'
+    +(()=>{const prev=googleAdsReportState.comparisonData?.campaigns||[];const total=(arr,key)=>arr.reduce((n,r)=>n+Number(r[key]||0),0);const curr={spend,clicks,impressions,conversions};const prior={spend:total(prev,"spend"),clicks:total(prev,"clicks"),impressions:total(prev,"impressions"),conversions:total(prev,"conversions")};return '<div class="grid four">'+Object.keys(curr).map(key=>{const change=prior[key]?(curr[key]-prior[key])/prior[key]*100:null;const label=change===null?(curr[key]?"New":"—"):(change>0?"+":"")+change.toFixed(1)+"%";return '<div><div class="label">'+key.charAt(0).toUpperCase()+key.slice(1)+'</div><div class="value">'+label+'</div><div class="muted">Selected dates: '+fmtNum(curr[key])+'</div><div class="muted">Previous equal-length period: '+fmtNum(prior[key])+'</div></div>';}).join('')+'</div>';})()+'</div>'
     +'</div>'
     +'<div data-google-subtab="keywords"><div class="card" style="margin-bottom:16px"><div class="section-head"><h3>Google Ads Keywords</h3><span class="badge">Search keyword data</span></div>'+(googleAdsReportState.keywordError?'<div class="error-message">'+esc(googleAdsReportState.keywordError)+'</div>':'')+(()=>{const ks=googleAdsReportState.keywordsData?.keywords||[];return ks.length?'<div style="overflow-x:auto"><table class="table"><thead><tr><th>Keyword</th><th>Match type</th><th>Campaign</th><th>Ad group</th><th>Status</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Cost</th><th>Conversions</th></tr></thead><tbody>'+ks.slice().sort((a,b)=>b.impressions-a.impressions).slice(0,100).map(k=>'<tr><td>'+esc(k.keyword)+'</td><td>'+esc(k.matchType)+'</td><td>'+esc(k.campaignName)+'</td><td>'+esc(k.adGroupName)+'</td><td>'+esc(k.status)+'</td><td>'+fmtNum(k.impressions)+'</td><td>'+fmtNum(k.clicks)+'</td><td>'+fmtPct(k.ctr)+'</td><td>'+fmtMoney(k.spend)+'</td><td>'+fmtNum(k.conversions)+'</td></tr>').join('')+'</tbody></table></div>':'<p class="muted">No keyword rows returned. Keyword rows are only available for supported Search campaigns.</p>';})()+'</div>'
     +'</div>'
