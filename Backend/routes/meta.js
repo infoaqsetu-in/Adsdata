@@ -64,7 +64,7 @@ module.exports = (supabase, authenticateToken) => {
     // PostgREST/Postgres errors that mean the migration has not been applied
     if (err && ["PGRST204", "42703", "42P10", "42P01", "PGRST205"].includes(err.code)) {
       console.error(`${label}: database schema mismatch:`, err.code, err.message);
-      return fail(res, 500, "Database is missing the Meta integration columns. Run Backend/sql/001_meta_integration.sql in Supabase.", "DB_MIGRATION_REQUIRED");
+      return fail(res, 500, `Database schema error (${err.code}): ${String(err.message || "missing column or constraint").slice(0, 260)}. Confirm the migration was run on the same Supabase project used by the deployed backend.`, "DB_MIGRATION_REQUIRED");
     }
     console.error(`${label}:`, err?.code || "", err?.message || err);
     return fail(res, 500, "Server error");
