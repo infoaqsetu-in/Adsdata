@@ -69,3 +69,16 @@ create index if not exists meta_connections_status_updated_idx
 
 create index if not exists meta_account_permissions_client_idx
   on public.meta_account_permissions (client_id);
+
+-- Organic social sync fields used by /api/meta/social/sync.
+-- Keep existing manually entered posts; these are additive columns.
+alter table public.social_posts
+  add column if not exists platform_post_id text,
+  add column if not exists published_at timestamptz,
+  add column if not exists likes_count bigint,
+  add column if not exists comments_count bigint,
+  add column if not exists updated_at timestamptz not null default now();
+
+create unique index if not exists social_posts_platform_post_id_unique
+  on public.social_posts (platform, platform_post_id)
+  where platform_post_id is not null;
