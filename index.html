@@ -687,7 +687,7 @@ const googleAdsState = {
   status: null, accounts: [], clients: [], selectedClientId: "",
   selectedAccountIds: [], loading: false, syncing: false, message: null
 };
-const googleAdsReportState = { loading: false, error: "", assetError: "", keywordError: "", searchError: "", negativeError: "", diagnosticsError: "", data: null, assetsData: null, keywordsData: null, searchData: null, negativeData: null, diagnosticsData: null, comparisonData: null, startDate: "", endDate: "" };
+const googleAdsReportState = { loading: false, error: "", assetError: "", keywordError: "", searchError: "", negativeError: "", diagnosticsError: "", callsError: "", data: null, assetsData: null, keywordsData: null, searchData: null, negativeData: null, diagnosticsData: null, callsData: null, comparisonData: null, startDate: "", endDate: "" };
 
 const clientPages = [
   "Dashboard",
@@ -2229,14 +2229,15 @@ async function loadGoogleAdsCampaigns(){
     const days = Math.max(1, Math.round((endMs-startMs)/86400000)+1);
     const isoDate = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
     const prevQuery = "?clientId="+encodeURIComponent(clientId)+"&startDate="+isoDate(new Date(startMs-days*86400000))+"&endDate="+isoDate(new Date(startMs-86400000));
-    const [campaignResult, assetResult, keywordResult, searchResult, negativeResult, diagnosticResult, comparisonResult] = await Promise.allSettled([
+    const [campaignResult, assetResult, keywordResult, searchResult, negativeResult, diagnosticResult, comparisonResult, callsResult] = await Promise.allSettled([
       apiRequest("/api/google-ads/campaigns"+query),
       apiRequest("/api/google-ads/assets"+query),
       apiRequest("/api/google-ads/keywords"+query),
       apiRequest("/api/google-ads/search-terms"+query),
       apiRequest("/api/google-ads/negative-keywords?clientId="+encodeURIComponent(clientId)),
       apiRequest("/api/google-ads/diagnostics?clientId="+encodeURIComponent(clientId)),
-      apiRequest("/api/google-ads/campaigns"+prevQuery)
+      apiRequest("/api/google-ads/campaigns"+prevQuery),
+      apiRequest("/api/google-ads/calls"+query)
     ]);
     if(campaignResult.status === "rejected") throw campaignResult.reason;
     googleAdsReportState.data = campaignResult.value;
@@ -2251,6 +2252,8 @@ async function loadGoogleAdsCampaigns(){
     googleAdsReportState.diagnosticsData = diagnosticResult.status === "fulfilled" ? diagnosticResult.value : null;
     googleAdsReportState.diagnosticsError = diagnosticResult.status === "rejected" ? (diagnosticResult.reason?.message || "Diagnostics unavailable.") : "";
     googleAdsReportState.comparisonData = comparisonResult.status === "fulfilled" ? comparisonResult.value : null;
+    googleAdsReportState.callsData = callsResult.status === "fulfilled" ? callsResult.value : null;
+    googleAdsReportState.callsError = callsResult.status === "rejected" ? (callsResult.reason?.message || "Call data unavailable.") : "";
   }catch(error){
     googleAdsReportState.error = error.message || "Unable to load Google Ads campaigns.";
     googleAdsReportState.data = null;
@@ -2325,7 +2328,7 @@ function googleAdsCampaigns(){
   const refresh='<button class="btn btn-light" onclick="googleAdsReportState.data=null;googleAdsReportState.assetsData=null;googleAdsReportState.error=\'\';googleAdsReportState.assetError=\'\';loadGoogleAdsCampaigns()" '+(googleAdsReportState.loading?'disabled':'')+'>'+(googleAdsReportState.loading?'Loading…':'Refresh report')+'</button>';
   const assetWarning=googleAdsReportState.assetError?'<div class="error-message">'+esc('Campaign data loaded, but asset data could not be loaded: '+googleAdsReportState.assetError)+'</div>':(assetData?.warnings?.length?'<p class="muted" style="font-size:12px">'+esc(assetData.warnings.join(' · '))+'</p>':"");
   const assetRows=assets.slice().sort((a,b)=>Number(b.impressions||0)-Number(a.impressions||0));
-  const tabs='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 18px">'+[["overview","Overview"],["keywords","Keywords"],["daily","Spending per Day"],["assets","Assets"],["comparison","Period Comparison"],["diagnostics","Account Diagnostics"]].map(([key,label])=>'<button type="button" data-google-tab="'+key+'" class="btn btn-light" onclick="googleAdsSubtab(\''+key+'\')">'+label+'</button>').join("")+'</div>';
+  const tabs='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 18px">'+[["overview","Overview"],["keywords","Keywords"],["daily","Spending per Day"],["assets","Assets"],["calls","Calls"],["comparison","Period Comparison"],["diagnostics","Account Diagnostics"]].map(([key,label])=>'<button type="button" data-google-tab="'+key+'" class="btn btn-light" onclick="googleAdsSubtab(\''+key+'\')">'+label+'</button>').join("")+'</div>';
   setTimeout(()=>googleAdsSubtab(window.googleAdsActiveSubtab||"overview"),0);
   return title("Google Ads","Campaign, asset and performance analytics.")
     +error+notice+tabs
