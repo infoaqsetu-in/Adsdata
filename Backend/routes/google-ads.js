@@ -225,27 +225,6 @@ module.exports = (supabase, authenticateToken) => {
     }
   });
 
-  router.get("/available-accounts", async (req, res) => {
-    if (req.user.role !== "admin") return fail(res, 403, "Admin role required");
-    try {
-      const { data, error } = await supabase.from("google_ads_available_accounts")
-        .select("customer_id,customer_name,currency_code,is_manager,status,updated_at")
-        .order("customer_name");
-      if (error) throw error;
-      res.json({ success: true, accounts: (data || []).map(a => ({
-        customerId: normalizeCustomerId(a.customer_id),
-        name: a.customer_name,
-        currency: a.currency_code,
-        isManager: Boolean(a.is_manager),
-        status: a.status,
-        updatedAt: a.updated_at
-      })) });
-    } catch (e) {
-      console.error("Google Ads saved accounts:", e.message);
-      fail(res, 500, "Unable to load saved Google Ads accounts. Confirm migration 007 has been run.");
-    }
-  });
-
   router.get("/client-accounts", async (req, res) => {
     if (req.user.role !== "admin") return fail(res, 403, "Admin role required");
     try {
@@ -429,62 +408,6 @@ module.exports = (supabase, authenticateToken) => {
 
 
 
-  router.get("/calls", async (req, res) => {
-    try {
-      const clientId = req.user.role === "admin" ? String(req.query.clientId || "") : String(req.user.clientId || "");
-      if (!clientId) return fail(res, 400, "clientId is required");
-      if (req.user.role !== "admin" && clientId !== String(req.user.clientId)) return fail(res, 403, "You cannot access another client's Google Ads data");
-      const startDate = String(req.query.startDate || "");
-      const endDate = String(req.query.endDate || "");
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate) return fail(res, 400, "Valid startDate and endDate (YYYY-MM-DD) are required");
-      const { data: mappings, error } = await supabase.from("google_ads_client_accounts").select("customer_id,customer_name,currency_code").eq("client_id", clientId);
-      if (error) throw error;
-      if (!mappings?.length) return res.json({ success: true, connected: false, calls: [], warnings: [], message: "No Google Ads account is assigned to this client." });
-      const conn = await getConnection(supabase);
-      if (!conn) return fail(res, 409, "Google Ads is not connected by the agency administrator", "GOOGLE_ADS_NOT_CONNECTED");
-      const accessToken = await refreshAccessToken(conn.refreshToken);
-      const all = [], warnings = [];
-      for (const account of mappings) {
-        try {
-          const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
-            query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type, segments.date, metrics.phone_calls, metrics.phone_impressions, metrics.phone_through_rate, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
-          });
-          for (const row of result.results || []) {
-            const m = row.metrics || {};
-            const phoneCalls = Number(m.phoneCalls || 0);
-            const phoneImpressions = Number(m.phoneImpressions || 0);
-            const cost = Number(m.costMicros || 0) / 1000000;
-            all.push({
-              customerId: String(row.customer?.id || account.customer_id),
-              customerName: row.customer?.descriptiveName || account.customer_name,
-              currency: row.customer?.currencyCode || account.currency_code,
-              campaignId: String(row.campaign?.id || ""),
-              campaignName: row.campaign?.name || "—",
-              campaignStatus: row.campaign?.status || "—",
-              channel: row.campaign?.advertisingChannelType || "—",
-              date: row.segments?.date || "",
-              calls: phoneCalls,
-              phoneImpressions,
-              callRate: Number(m.phoneThroughRate || 0) * 100,
-              spend: Number(cost.toFixed(2)),
-              conversions: Number(m.conversions || 0),
-              costPerCall: phoneCalls ? Number((cost / phoneCalls).toFixed(2)) : 0
-            });
-          }
-        } catch (accountError) {
-          // One account without call-reporting access must not blank the other accounts.
-          warnings.push((account.customer_name || account.customer_id) + ": " + accountError.message);
-        }
-      }
-      res.json({ success: true, connected: true, startDate, endDate, calls: all, warnings, source: "Google Ads API" });
-    } catch (e) {
-      console.error("Google Ads calls:", e.message);
-      if (e.googleAds) return fail(res, 502, "Google Ads call reporting API error: " + e.message, "GOOGLE_ADS_API_ERROR");
-      if (e.oauth) return fail(res, 409, "Google Ads authorization has expired or was revoked. Reconnect Google Ads.", "GOOGLE_ADS_REAUTH_REQUIRED");
-      fail(res, 500, "Unable to load Google Ads call data.");
-    }
-  });
-
   router.get("/keywords", async (req, res) => {
     try {
       const clientId = req.user.role === "admin" ? String(req.query.clientId || "") : String(req.user.clientId || "");
@@ -633,7 +556,7 @@ module.exports = (supabase, authenticateToken) => {
     try {
       if (req.user.role !== "admin") return fail(res, 403, "Administrator access is required.");
       const snapshotDate = String(req.body?.date || new Date(Date.now() - 86400000).toISOString().slice(0, 10));
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)) return fail(res, 400, "date must use YYYY-MM-DD.");
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(snapshotDate)) return fail(res, 400, "date must use YYYY-MM-DD.");
       const { data: mappings, error } = await supabase.from("google_ads_client_accounts").select("client_id,customer_id,customer_name,currency_code");
       if (error) throw error;
       const conn = await getConnection(supabase);
@@ -663,7 +586,7 @@ module.exports = (supabase, authenticateToken) => {
       if (!clientId) return fail(res, 400, "clientId is required");
       if (req.user.role !== "admin" && clientId !== String(req.user.clientId)) return fail(res, 403, "You cannot access another client data");
       const startDate = String(req.query.startDate || ""), endDate = String(req.query.endDate || "");
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate) return fail(res, 400, "Valid startDate and endDate are required");
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(startDate) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(endDate) || startDate > endDate) return fail(res, 400, "Valid startDate and endDate are required");
       const { data, error } = await supabase.from("google_ads_daily_snapshots").select("*").eq("client_id", clientId).gte("snapshot_date", startDate).lte("snapshot_date", endDate).order("snapshot_date", { ascending: true });
       if (error) throw error;
       res.json({ success: true, snapshots: data || [], startDate, endDate, source: "Stored daily snapshots" });
@@ -690,7 +613,7 @@ module.exports = (supabase, authenticateToken) => {
       for (const account of mappings) {
         try {
           const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
-            query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, campaign.id, campaign.name, asset_group.id, asset_group.name, asset_group_asset.asset, asset_group_asset.field_type, asset_group_asset.status, asset.type, asset.text_asset.text, asset.image_asset.full_size.url, segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.ctr FROM asset_group_asset WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
+            query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, campaign.id, campaign.name, asset_group.id, asset_group.name, asset_group_asset.asset, asset_group_asset.field_type, asset_group_asset.status, asset_group_asset.performance_label, asset.type, asset.text_asset.text, asset.image_asset.full_size.url, segments.date, metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions, metrics.ctr FROM asset_group_asset WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
           });
           for (const row of result.results || []) {
             const m = row.metrics || {}, asset = row.asset || {}, ag = row.assetGroupAsset || {};
@@ -702,7 +625,7 @@ module.exports = (supabase, authenticateToken) => {
               assetId: String(asset.id || ""),
               assetType: asset.type || ag.fieldType || "—",
               fieldType: ag.fieldType || "—",
-              performanceLabel: ag.performanceLabel || "Not provided by API",
+              performanceLabel: ag.performanceLabel || "—",
               status: ag.status || "—",
               text: asset.textAsset?.text || "",
               imageUrl: asset.imageAsset?.fullSize?.url || "",
