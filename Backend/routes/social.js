@@ -13,7 +13,7 @@ module.exports=(supabase,authenticateToken)=>{
  router.patch("/:id/status",authenticateToken,async(req,res)=>{
   try{
    const status=String(req.body?.status||"");
-   if(!["pending_approval","approved","rejected","draft"].includes(status))return res.status(400).json({success:false,message:"Invalid approval status"});
+   if(!["pending_approval","approved","rejected","draft","scheduled","published","failed"].includes(status))return res.status(400).json({success:false,message:"Invalid post status"});
    const isAdmin=req.user.role==="admin";
    const clientId=String(req.user.clientId||"");
    let lookup=supabase.from("social_posts").select("*").eq("id",req.params.id);
