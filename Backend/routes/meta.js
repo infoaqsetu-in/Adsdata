@@ -314,6 +314,7 @@ module.exports = (supabase, authenticateToken) => {
     if (error) throw error;
     const byId = new Map();
     const diagnostics = [];
+    if (!data?.length) diagnostics.push({ clientId: null, issue: "No active Meta connection rows with saved access tokens were found in the deployed database." });
     for (const row of data || []) {
       try {
         const token = decryptToken(row.access_token);
@@ -348,7 +349,7 @@ module.exports = (supabase, authenticateToken) => {
         getOrganicDirectoryPages(),
         supabase.from("client_social_page_permissions").select("page_id,is_allowed").eq("client_id", clientId)
       ]);
-      if (!pages.length) return res.status(404).json({ success: false, message: "No Facebook Pages are accessible from the active Meta connections.", diagnostics: pages.diagnostics || [], nextStep: "Reconnect the Meta account that has access to the Facebook Pages and approve the requested Page permissions." });
+      if (!pages.length) { const details = (pages.diagnostics || []).map(d => d.clientId ? `${d.clientId}: ${d.issue}` : d.issue); return res.status(404).json({ success: false, message: "No Facebook Pages are accessible from the active Meta connections." + (details.length ? " Details: " + details.join(" | ") : " No diagnostic details were returned; verify the deployed backend version and database connection."), diagnostics: pages.diagnostics || [], nextStep: "Reconnect the Meta account that has access to the Facebook Pages and approve the requested Page permissions." }); }
       if (assignedResult.error) throw assignedResult.error;
       const rows = assignedResult.data || [];
       const hasExplicitPermissions = rows.length > 0;
@@ -373,7 +374,7 @@ module.exports = (supabase, authenticateToken) => {
       if (clientError) throw clientError;
       if (!client) return fail(res, 404, "Selected client was not found");
       const pages = await getOrganicDirectoryPages();
-      if (!pages.length) return res.status(404).json({ success: false, message: "No Facebook Pages are accessible from the active Meta connections.", diagnostics: pages.diagnostics || [], nextStep: "Reconnect the Meta account that has access to the Facebook Pages and approve the requested Page permissions." });
+      if (!pages.length) { const details = (pages.diagnostics || []).map(d => d.clientId ? `${d.clientId}: ${d.issue}` : d.issue); return res.status(404).json({ success: false, message: "No Facebook Pages are accessible from the active Meta connections." + (details.length ? " Details: " + details.join(" | ") : " No diagnostic details were returned; verify the deployed backend version and database connection."), diagnostics: pages.diagnostics || [], nextStep: "Reconnect the Meta account that has access to the Facebook Pages and approve the requested Page permissions." }); }
       const pageById = new Map(pages.map(p => [String(p.id), p]));
       if (pageIds.some(id => !pageById.has(id))) return fail(res, 400, "One or more Pages are not accessible through the connected Meta account");
       const { error: deleteError } = await supabase.from("client_social_page_permissions").delete().eq("client_id", clientId);
@@ -399,7 +400,7 @@ module.exports = (supabase, authenticateToken) => {
     if (!clientId) return fail(res, 400, "clientId is required");
     try {
       const pages = await getOrganicDirectoryPages();
-      if (!pages.length) return res.status(404).json({ success: false, message: "No Facebook Pages are accessible from the active Meta connections.", diagnostics: pages.diagnostics || [], nextStep: "Reconnect the Meta account that has access to the Facebook Pages and approve the requested Page permissions." });
+      if (!pages.length) { const details = (pages.diagnostics || []).map(d => d.clientId ? `${d.clientId}: ${d.issue}` : d.issue); return res.status(404).json({ success: false, message: "No Facebook Pages are accessible from the active Meta connections." + (details.length ? " Details: " + details.join(" | ") : " No diagnostic details were returned; verify the deployed backend version and database connection."), diagnostics: pages.diagnostics || [], nextStep: "Reconnect the Meta account that has access to the Facebook Pages and approve the requested Page permissions." }); }
       const { data: permissions, error: permissionError } = await supabase.from("client_social_page_permissions")
         .select("page_id").eq("client_id", clientId).eq("is_allowed", true);
       if (permissionError) throw permissionError;
