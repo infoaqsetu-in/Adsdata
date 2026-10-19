@@ -331,14 +331,11 @@ module.exports = (supabase, authenticateToken) => {
     const clientId=isAdmin?String(req.body?.clientId||""):req.user.clientId;
     if(!clientId)return fail(res,400,"clientId is required");
     try{
-      let conn=await getConnection(clientId);
-      if(!conn){
-        if(!isAdmin)return fail(res,404,"No Meta connection for this client");
-        const {data:source,error}=await supabase.from("meta_connections").select("*")
-          .eq("status","active").not("access_token","is",null).order("updated_at",{ascending:false}).limit(1).maybeSingle();
-        if(error)throw error;if(!source)return fail(res,404,"Connect Meta to the agency first");
-        conn={...source,token:decryptToken(source.access_token)};
-      }
+      // Never use another client's or an agency-wide connection to sync a client's calendar.
+      // The imported rows are tagged with clientId, so a shared fallback can leak every accessible Page
+      // into whichever client was selected in the admin UI.
+      const conn=await getConnection(clientId);
+      if(!conn)return fail(res,404,"No active Meta connection is assigned to this client. Connect or assign the correct client account before syncing.");
       const pages=await meta.listPages(conn.token);
       const requested=Array.isArray(req.body?.pageIds)?req.body.pageIds:[];
       const selected=requested.length?pages.filter(p=>requested.includes(p.id)):pages;
