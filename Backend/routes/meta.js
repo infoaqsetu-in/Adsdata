@@ -313,19 +313,30 @@ module.exports = (supabase, authenticateToken) => {
       .order("updated_at", { ascending: false });
     if (error) throw error;
     const byId = new Map();
+    const diagnostics = [];
     for (const row of data || []) {
       try {
         const token = decryptToken(row.access_token);
         const pages = await meta.listPages(token);
+        if (!pages.length) {
+          diagnostics.push({ clientId: row.client_id, issue: "Meta returned no Pages for this connection. Check the Facebook user, Page access, and approved permissions." });
+        }
         for (const page of pages) {
           const key = String(page.id);
           if (!byId.has(key)) byId.set(key, { ...page, _accessToken: token });
         }
       } catch (err) {
-        console.warn("Unable to enumerate organic Pages for a Meta connection:", err?.code || err?.message || err);
+        const message = err?.message || "Unknown Meta API error";
+        console.warn("Unable to enumerate organic Pages for a Meta connection:", err?.metaCode || err?.code || message);
+        diagnostics.push({
+          clientId: row.client_id,
+          issue: err?.metaCode ? `Meta API error ${err.metaCode}: ${message}` : message
+        });
       }
     }
-    return Array.from(byId.values());
+    const pages = Array.from(byId.values());
+    pages.diagnostics = diagnostics;
+    return pages;
   }
 
   router.get("/social/accounts", authenticateToken, async (req, res) => {
@@ -337,12 +348,12 @@ module.exports = (supabase, authenticateToken) => {
         getOrganicDirectoryPages(),
         supabase.from("client_social_page_permissions").select("page_id,is_allowed").eq("client_id", clientId)
       ]);
-      if (!pages.length) return fail(res, 404, "No Facebook Pages are accessible from the active Meta connections. Connect the agency Meta account with Page permissions.");
+      if (!pages.length) return res.status(404).json({ success: false, message: "No Facebook Pages are accessible from the active Meta connections.", diagnostics: pages.diagnostics || [], nextStep: "Reconnect the Meta account that has access to the Facebook Pages and approve the requested Page permissions." });
       if (assignedResult.error) throw assignedResult.error;
       const rows = assignedResult.data || [];
       const hasExplicitPermissions = rows.length > 0;
       const assigned = new Set(rows.filter(x => x.is_allowed).map(x => String(x.page_id)));
-      res.json({ success: true, hasExplicitPermissions, pages: pages.map(p => ({
+      res.json({ success: true, hasExplicitPermissions, diagnostics: pages.diagnostics || [], pages: pages.map(p => ({
         id: p.id, name: p.name,
         instagramAccount: p.instagram_business_account ? { id: p.instagram_business_account.id, username: p.instagram_business_account.username } : null,
         allowed: assigned.has(String(p.id))
@@ -377,7 +388,7 @@ module.exports = (supabase, authenticateToken) => {
         const { error } = await supabase.from("client_social_page_permissions").insert(rows);
         if (error) throw error;
       }
-      res.json({ success: true, clientId, allowedPageIds: pageIds });
+      res.json({ success: true, clientId, allowedPageIds: pageIds, diagnostics: pages.diagnostics || [] });
     } catch (err) { await handleError(req, res, err, "save-social-page-permissions"); }
   });
 
@@ -433,7 +444,7 @@ module.exports = (supabase, authenticateToken) => {
           synced += batch.length;
         }
       }
-      res.json({success:true,pagesSynced:selected.length,postsSynced:synced,warnings});
+      res.json({success:true,pagesSynced:selected.length,postsSynced:synced,warnings:[...(pages.diagnostics || []).map(d => `${d.clientId}: ${d.issue}`), ...warnings]});
     } catch (err) { await handleError(req, res, err, "meta-social-sync"); }
   });
 
