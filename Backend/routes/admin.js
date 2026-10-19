@@ -61,6 +61,17 @@ module.exports = (supabase, authenticateToken) => {
     try { let q=supabase.from("leads").select("*, clients(display_name,client_code)").order("created_at",{ascending:false}).limit(2000); if(typeof req.query.clientId==="string"&&req.query.clientId)q=q.eq("client_id",req.query.clientId); const {data,error}=await q; if(error)throw error; res.json({success:true,leads:data||[]}); }
     catch(e){console.error("Admin leads error:",e?.message||e);res.status(500).json({success:false,message:"Unable to load agency leads"});}
   });
+  router.patch("/leads/:id/status", async (req, res) => {
+    try {
+      const status = String(req.body?.status || "").toLowerCase();
+      if (!["new", "contacted", "qualified", "converted", "lost"].includes(status)) return res.status(400).json({ success: false, message: "Invalid lead status" });
+      const { data, error } = await supabase.from("leads").update({ status }).eq("id", req.params.id).select("*").maybeSingle();
+      if (error) throw error;
+      if (!data) return res.status(404).json({ success: false, message: "Lead not found" });
+      res.json({ success: true, lead: data });
+    } catch (error) { console.error("Admin update lead status:", error?.message || error); res.status(500).json({ success: false, message: "Unable to update lead status" }); }
+  });
+
   router.get("/social-posts", async (req,res) => {
     try { let q=supabase.from("social_posts").select("*, clients(display_name,client_code)").order("scheduled_at",{ascending:false}).limit(2000); if(typeof req.query.clientId==="string"&&req.query.clientId)q=q.eq("client_id",req.query.clientId); const {data,error}=await q; if(error)throw error; res.json({success:true,posts:data||[]}); }
     catch(e){console.error("Admin social posts error:",e?.message||e);res.status(500).json({success:false,message:"Unable to load social calendar"});}
