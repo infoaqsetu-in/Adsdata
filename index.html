@@ -2437,13 +2437,50 @@ async function updateSocialPostStatus(id,status){
   await loadSocialCalendar();
  }catch(e){alert('Could not update post status: '+e.message);await loadSocialCalendar();}
 }
+async function syncSocialCalendarFromMeta(){
+ const admin=state.user?.role==="admin";
+ let clientId=null;
+ if(admin){
+  try{
+   const d=await apiRequest("/api/admin/overview");
+   const clients=d.clients||[];
+   if(!clients.length){alert("No clients are available to sync.");return;}
+   const choices=clients.map((c,i)=>(i+1)+". "+c.display_name).join("\n");
+   const choice=prompt("Sync Instagram and Facebook posts for which client?\n"+choices,"1");
+   if(choice===null)return;
+   const idx=Number(choice)-1;
+   if(!Number.isInteger(idx)||idx<0||idx>=clients.length){alert("Invalid client selection.");return;}
+   clientId=clients[idx].id;
+  }catch(e){alert("Could not load clients: "+e.message);return;}
+ }
+ const box=document.getElementById("social-calendar-live");
+ const button=document.getElementById("social-meta-sync-button");
+ if(button){button.disabled=true;button.textContent="Syncing Meta posts…";}
+ if(box)box.insertAdjacentHTML("afterbegin",'<div id="social-meta-sync-note" class="muted" style="padding:8px 0">Fetching available Facebook and Instagram posts…</div>');
+ try{
+  const payload=admin?{clientId}:{};
+  const d=await apiRequest("/api/meta/social/sync",{method:"POST",body:JSON.stringify(payload)});
+  const note=document.getElementById("social-meta-sync-note");
+  if(note)note.textContent="Meta sync complete: "+(d.postsSynced||0)+" posts checked across "+(d.pagesSynced||0)+" Pages.";
+  await loadSocialCalendar();
+  const fresh=document.getElementById("social-meta-sync-note");
+  if(fresh)fresh.textContent="Meta sync complete: "+(d.postsSynced||0)+" posts checked across "+(d.pagesSynced||0)+" Pages.";
+ }catch(e){
+  const note=document.getElementById("social-meta-sync-note");
+  if(note)note.textContent="Meta sync could not complete: "+e.message;
+  else alert("Meta sync could not complete: "+e.message);
+ }finally{
+  const current=document.getElementById("social-meta-sync-button");
+  if(current){current.disabled=false;current.textContent="↻ Sync Instagram & Facebook";}
+ }
+}
 async function loadSocialCalendar(){
  const box=document.getElementById("social-calendar-live");if(!box)return;box.innerHTML='<div class="muted">Loading social posts…</div>';
  try{const admin=state.user?.role==="admin";const d=await apiRequest(admin?"/api/admin/social-posts":"/api/social-posts");const filter=document.getElementById("social-status-filter")?.value||"all";const rows=(d.posts||[]).filter(p=>filter==="all"||p.status===filter).sort((a,b)=>new Date(b.scheduled_at||b.created_at)-new Date(a.scheduled_at||a.created_at));
  box.innerHTML=rows.length?'<div style="overflow-x:auto"><table class="table"><thead><tr>'+(admin?'<th>Client</th>':'')+'<th>Scheduled / Published</th><th>Platform</th><th>Post</th><th>Status</th><th>Likes</th><th>Comments</th><th>Views</th><th>Link</th></tr></thead><tbody>'+rows.map(p=>'<tr>'+(admin?'<td>'+esc(p.clients?.display_name||"—")+'</td>':'')+'<td>'+esc((p.published_at||p.scheduled_at||p.created_at)?new Date(p.published_at||p.scheduled_at||p.created_at).toLocaleString("en-IN"):"—")+'</td><td>'+esc(p.platform)+'</td><td><div style="max-width:320px;white-space:normal">'+esc(p.caption)+'</div></td><td>'+(admin?'<select aria-label="Post status" onchange="updateSocialPostStatus(\''+esc(p.id)+'\',this.value)" style="padding:6px;border:1px solid var(--line);border-radius:7px">'+["draft","pending_approval","approved","rejected","scheduled","published","failed"].map(st=>'<option value="'+st+'" '+(p.status===st?'selected':'')+'>'+st.replace("_"," ").replace(/^\w/,c=>c.toUpperCase())+'</option>').join("")+'</select>':esc(p.status||"draft"))+'</td><td>'+esc(p.likes_count??"—")+'</td><td>'+esc(p.comments_count??"—")+'</td><td>'+esc(p.views_count??"—")+'</td><td>'+(p.post_url?'<a href="'+esc(p.post_url)+'" target="_blank" rel="noopener">View post</a>':'—')+'</td></tr>').join('')+'</tbody></table></div>':'<div class="empty">No social posts recorded yet. Calendar records will appear here once added.</div>';
  }catch(e){box.innerHTML='<div class="error-message">'+esc(e.message)+'</div>';}
 }
-function social(){setTimeout(loadSocialCalendar,0);return title("Social Media",state.user?.role==="admin"?"Agency-wide calendar across all clients.":"Your past, scheduled and upcoming social posts.",'<button class="btn btn-primary" onclick="uploadContent()">+ Add Post</button>')+'<div class="card"><div class="section-head"><h3>Social Media Calendar</h3><select id="social-status-filter" onchange="loadSocialCalendar()" style="padding:9px;border:1px solid var(--line);border-radius:8px"><option value="all">All statuses</option><option value="draft">Draft</option><option value="pending_approval">Pending approval</option><option value="approved">Approved</option><option value="scheduled">Scheduled</option><option value="published">Published</option><option value="failed">Failed</option><option value="rejected">Rejected</option></select></div><div id="social-calendar-live"></div></div>';}
+function social(){setTimeout(loadSocialCalendar,0);return title("Social Media",state.user?.role==="admin"?"Agency-wide calendar across all clients.":"Your past, scheduled and upcoming social posts.",'<button class="btn btn-primary" onclick="uploadContent()">+ Add Post</button>')+'<div class="card"><div class="section-head"><h3>Social Media Calendar</h3><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button id="social-meta-sync-button" class="btn btn-light" onclick="syncSocialCalendarFromMeta()">↻ Sync Instagram & Facebook</button><select id="social-status-filter" onchange="loadSocialCalendar()" style="padding:9px;border:1px solid var(--line);border-radius:8px"><option value="all">All statuses</option><option value="draft">Draft</option><option value="pending_approval">Pending approval</option><option value="approved">Approved</option><option value="scheduled">Scheduled</option><option value="published">Published</option><option value="failed">Failed</option><option value="rejected">Rejected</option></select></div></div><div class="muted" style="margin:0 0 12px">Sync to import accessible published posts and scheduled Facebook Page posts, plus available Instagram media.</div><div id="social-calendar-live"></div></div>';}
 
 async function loadApprovalItems(){
  const box=document.getElementById("approval-list");if(!box)return;
