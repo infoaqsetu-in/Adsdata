@@ -989,12 +989,14 @@ async function doLogin(){
       Save authentication information
     */
 
-    localStorage.setItem(
+    // Keep credential login consistent with Google login and loadClient(),
+    // which both use sessionStorage for the active session.
+    sessionStorage.setItem(
       "aqsetu_token",
       data.token
     );
 
-    localStorage.setItem(
+    sessionStorage.setItem(
       "aqsetu_user",
       JSON.stringify(data.user)
     );
