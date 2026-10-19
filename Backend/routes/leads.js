@@ -46,5 +46,17 @@ module.exports = (supabase, authenticateToken) => {
 
   });
 
+  // Client-scoped lead status update.
+  router.patch("/:id/status", authenticateToken, async (req, res) => {
+    try {
+      const status = String(req.body?.status || "").toLowerCase();
+      if (!["new", "contacted", "qualified", "converted", "lost"].includes(status)) return res.status(400).json({ success: false, message: "Invalid lead status" });
+      const { data, error } = await supabase.from("leads").update({ status }).eq("id", req.params.id).eq("client_id", req.user.clientId).select("*").maybeSingle();
+      if (error) throw error;
+      if (!data) return res.status(404).json({ success: false, message: "Lead not found or access denied" });
+      res.json({ success: true, lead: data });
+    } catch (error) { console.error("Update lead status error:", error?.message || error); res.status(500).json({ success: false, message: "Unable to update lead status" }); }
+  });
+
   return router;
 };
