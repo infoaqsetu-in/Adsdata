@@ -85,6 +85,7 @@ alter table public.social_posts
 -- A Meta post must be unique within a client, not globally across all clients.
 -- Drop the earlier global index because it can reassign a post to whichever client syncs last.
 drop index if exists public.social_posts_platform_post_id_unique;
+drop index if exists public.idx_social_posts_platform_post_unique;
 create unique index if not exists social_posts_client_platform_post_id_unique
   on public.social_posts (client_id, platform, platform_post_id)
   where platform_post_id is not null;
