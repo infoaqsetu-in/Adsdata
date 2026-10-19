@@ -373,7 +373,7 @@ module.exports = (supabase, authenticateToken) => {
       if (clientError) throw clientError;
       if (!client) return fail(res, 404, "Selected client was not found");
       const pages = await getOrganicDirectoryPages();
-      if (!pages.length) return fail(res, 404, "No Facebook Pages are accessible from the active Meta connections. Connect the agency Meta account with Page permissions.");
+      if (!pages.length) return res.status(404).json({ success: false, message: "No Facebook Pages are accessible from the active Meta connections.", diagnostics: pages.diagnostics || [], nextStep: "Reconnect the Meta account that has access to the Facebook Pages and approve the requested Page permissions." });
       const pageById = new Map(pages.map(p => [String(p.id), p]));
       if (pageIds.some(id => !pageById.has(id))) return fail(res, 400, "One or more Pages are not accessible through the connected Meta account");
       const { error: deleteError } = await supabase.from("client_social_page_permissions").delete().eq("client_id", clientId);
@@ -399,7 +399,7 @@ module.exports = (supabase, authenticateToken) => {
     if (!clientId) return fail(res, 400, "clientId is required");
     try {
       const pages = await getOrganicDirectoryPages();
-      if (!pages.length) return fail(res, 404, "No Facebook Pages are accessible from the active Meta connections. Connect the agency Meta account with Page permissions.");
+      if (!pages.length) return res.status(404).json({ success: false, message: "No Facebook Pages are accessible from the active Meta connections.", diagnostics: pages.diagnostics || [], nextStep: "Reconnect the Meta account that has access to the Facebook Pages and approve the requested Page permissions." });
       const { data: permissions, error: permissionError } = await supabase.from("client_social_page_permissions")
         .select("page_id").eq("client_id", clientId).eq("is_allowed", true);
       if (permissionError) throw permissionError;
