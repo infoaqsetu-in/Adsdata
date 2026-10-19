@@ -430,7 +430,24 @@ module.exports = (supabase, authenticateToken) => {
           const result = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
             query: `SELECT customer.id, customer.descriptive_name, customer.currency_code, segments.date, metrics.phone_calls, metrics.phone_impressions, metrics.phone_through_rate, metrics.cost_micros, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' ORDER BY segments.date DESC`
           });
-          for (const row of result.results || []) {
+          const rows = result.results || [];
+          // Pull conversions attributed specifically to phone-call conversion actions.
+          // Keep this separate from metrics.phone_calls and total conversions.
+          let phoneCallConversions = [];
+          try {
+            const conversionResult = await googleAdsRequest(accessToken, account.customer_id, "googleAds:search", {
+              query: `SELECT segments.date, segments.conversion_action_category, metrics.conversions FROM campaign WHERE segments.date BETWEEN '${startDate}' AND '${endDate}' AND segments.conversion_action_category = 'PHONE_CALL_LEAD' ORDER BY segments.date DESC`
+            });
+            phoneCallConversions = conversionResult.results || [];
+          } catch (conversionError) {
+            warnings.push((account.customer_name || account.customer_id) + ": phone-call conversion breakdown unavailable: " + conversionError.message);
+          }
+          const conversionsByDate = new Map();
+          for (const conversionRow of phoneCallConversions) {
+            const date = conversionRow.segments?.date || "";
+            conversionsByDate.set(date, (conversionsByDate.get(date) || 0) + Number(conversionRow.metrics?.conversions || 0));
+          }
+          for (const row of rows) {
             const m = row.metrics || {};
             all.push({
               customerId: String(row.customer?.id || account.customer_id),
@@ -438,6 +455,7 @@ module.exports = (supabase, authenticateToken) => {
               currencyCode: row.customer?.currencyCode || account.currency_code || "",
               date: row.segments?.date || "",
               calls: Number(m.phoneCalls || 0),
+              phoneCallConversions: Number(conversionsByDate.get(row.segments?.date || "") || 0),
               phoneImpressions: Number(m.phoneImpressions || 0),
               phoneThroughRate: Number(m.phoneThroughRate || 0) * 100,
               spend: Number((Number(m.costMicros || 0) / 1000000).toFixed(2)),
