@@ -633,6 +633,27 @@ button,input,select{font:inherit}
     height:110px
   }
 }
+
+/* Meta Planner-style social calendar */
+.social-calendar-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:14px 0}
+.social-calendar-month{font-size:19px;font-weight:700;min-width:190px}
+.social-calendar-nav{display:flex;align-items:center;gap:8px}
+.social-calendar-nav button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 12px;cursor:pointer}
+.social-calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(115px,1fr));border-left:1px solid var(--line);border-top:1px solid var(--line);overflow-x:auto}
+.social-calendar-weekday{padding:10px 8px;background:#f8fafc;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-size:12px;font-weight:700;color:var(--muted);text-align:center}
+.social-calendar-day{min-height:132px;padding:7px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);background:#fff;min-width:0}
+.social-calendar-day.outside{background:#f8fafc;color:#9ca3af}
+.social-calendar-day.today{background:#f0f7ff}
+.social-calendar-date{font-size:12px;font-weight:700;margin-bottom:7px;display:flex;justify-content:space-between;align-items:center}
+.social-post-card{display:block;border:1px solid #dceee7;background:#eff8f4;border-radius:7px;padding:7px;margin:0 0 6px;min-width:0;color:var(--ink);text-decoration:none;font-size:11px;line-height:1.35;overflow-wrap:anywhere}
+.social-post-card.scheduled{background:#f1f5ff;border-color:#d9e2ff}
+.social-post-card.failed,.social-post-card.rejected{background:#fff1f1;border-color:#ffd6d6}
+.social-post-meta{display:flex;align-items:center;gap:5px;font-weight:700;margin-bottom:4px}
+.social-post-caption{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.social-calendar-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:12px 0}
+.social-calendar-legend span{display:flex;gap:5px;align-items:center}
+.social-calendar-dot{width:9px;height:9px;border-radius:3px;display:inline-block;background:#eff8f4;border:1px solid #dceee7}
+@media(max-width:900px){.social-calendar-grid{grid-template-columns:repeat(7,minmax(145px,1fr))}.social-calendar-day{min-height:110px}}
 </style>
 </head>
 
@@ -2478,10 +2499,63 @@ async function syncSocialCalendarFromMeta(){
   if(current){current.disabled=false;current.textContent="↻ Sync Instagram & Facebook";}
  }
 }
+let socialCalendarMonthOffset=0;
+function shiftSocialCalendarMonth(delta){socialCalendarMonthOffset+=delta;loadSocialCalendar();}
+function socialCalendarDateKey(value){
+ if(!value)return "";
+ const d=new Date(value);if(Number.isNaN(d.getTime()))return "";
+ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function socialCalendarPlatformIcon(platform){
+ const p=String(platform||"").toLowerCase();
+ return p.includes("instagram")?"📸":p.includes("facebook")?"🔵":p.includes("linkedin")?"💼":p.includes("youtube")?"▶️":"🗓️";
+}
 async function loadSocialCalendar(){
- const box=document.getElementById("social-calendar-live");if(!box)return;box.innerHTML='<div class="muted">Loading social posts…</div>';
- try{const admin=state.user?.role==="admin";const d=await apiRequest(admin?"/api/admin/social-posts":"/api/social-posts");const filter=document.getElementById("social-status-filter")?.value||"all";const rows=(d.posts||[]).filter(p=>filter==="all"||p.status===filter).sort((a,b)=>new Date(b.scheduled_at||b.created_at)-new Date(a.scheduled_at||a.created_at));
- box.innerHTML=rows.length?'<div style="overflow-x:auto"><table class="table"><thead><tr>'+(admin?'<th>Client</th>':'')+'<th>Scheduled / Published</th><th>Platform</th><th>Post</th><th>Status</th><th>Likes</th><th>Comments</th><th>Views</th><th>Link</th></tr></thead><tbody>'+rows.map(p=>'<tr>'+(admin?'<td>'+esc(p.clients?.display_name||"—")+'</td>':'')+'<td>'+esc((p.published_at||p.scheduled_at||p.created_at)?new Date(p.published_at||p.scheduled_at||p.created_at).toLocaleString("en-IN"):"—")+'</td><td>'+esc(p.platform)+'</td><td><div style="max-width:320px;white-space:normal">'+esc(p.caption)+'</div></td><td>'+(admin?'<select aria-label="Post status" onchange="updateSocialPostStatus(\''+esc(p.id)+'\',this.value)" style="padding:6px;border:1px solid var(--line);border-radius:7px">'+["draft","pending_approval","approved","rejected","scheduled","published","failed"].map(st=>'<option value="'+st+'" '+(p.status===st?'selected':'')+'>'+st.replace("_"," ").replace(/^\w/,c=>c.toUpperCase())+'</option>').join("")+'</select>':esc(p.status||"draft"))+'</td><td>'+esc(p.likes_count??"—")+'</td><td>'+esc(p.comments_count??"—")+'</td><td>'+esc(p.views_count??"—")+'</td><td>'+(p.post_url?'<a href="'+esc(p.post_url)+'" target="_blank" rel="noopener">View post</a>':'—')+'</td></tr>').join('')+'</tbody></table></div>':'<div class="empty">No social posts recorded yet. Calendar records will appear here once added.</div>';
+ const box=document.getElementById("social-calendar-live");if(!box)return;
+ box.innerHTML='<div class="muted">Loading social posts…</div>';
+ try{
+  const admin=state.user?.role==="admin";
+  const d=await apiRequest(admin?"/api/admin/social-posts":"/api/social-posts");
+  const filter=document.getElementById("social-status-filter")?.value||"all";
+  const rows=(d.posts||[]).filter(p=>filter==="all"||p.status===filter);
+  const now=new Date();
+  const month=new Date(now.getFullYear(),now.getMonth()+socialCalendarMonthOffset,1);
+  const year=month.getFullYear(), monthIndex=month.getMonth();
+  const monthLabel=month.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  const firstDay=new Date(year,monthIndex,1);
+  const gridStart=new Date(year,monthIndex,1-firstDay.getDay());
+  const gridEnd=new Date(year,monthIndex+1,1);
+  const dayCount=Math.ceil((gridEnd-gridStart)/(24*60*60*1000)/7)*7;
+  const grouped={};
+  rows.forEach(p=>{
+   const dateValue=p.scheduled_at||p.published_at||p.created_at;
+   const key=socialCalendarDateKey(dateValue);
+   if(key){(grouped[key]||(grouped[key]=[])).push(p);}
+  });
+  Object.values(grouped).forEach(items=>items.sort((a,b)=>new Date(a.scheduled_at||a.published_at||a.created_at)-new Date(b.scheduled_at||b.published_at||b.created_at)));
+  const weekdays=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  let html='<div class="social-calendar-toolbar"><div class="social-calendar-nav"><button type="button" onclick="shiftSocialCalendarMonth(-1)" aria-label="Previous month">‹</button><button type="button" onclick="socialCalendarMonthOffset=0;loadSocialCalendar()">Today</button><button type="button" onclick="shiftSocialCalendarMonth(1)" aria-label="Next month">›</button><div class="social-calendar-month">'+esc(monthLabel)+'</div></div><div class="muted">'+rows.length+' posts</div></div><div style="overflow-x:auto"><div class="social-calendar-grid">';
+  html+=weekdays.map(day=>'<div class="social-calendar-weekday">'+day+'</div>').join("");
+  for(let i=0;i<dayCount;i++){
+   const date=new Date(gridStart);date.setDate(gridStart.getDate()+i);
+   const key=socialCalendarDateKey(date);
+   const isOutside=date.getMonth()!==monthIndex;
+   const isToday=key===socialCalendarDateKey(now);
+   const items=grouped[key]||[];
+   html+='<div class="social-calendar-day'+(isOutside?' outside':'')+(isToday?' today':'')+'"><div class="social-calendar-date"><span>'+date.getDate()+'</span>'+(items.length?'<span>'+items.length+'</span>':'')+'</div>';
+   items.forEach(p=>{
+    const status=String(p.status||"draft").toLowerCase();
+    const stamp=p.scheduled_at||p.published_at||p.created_at;
+    const time=stamp?new Date(stamp).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}):"";
+    const caption=String(p.caption||"Untitled post");
+    const client=admin&&p.clients?.display_name?'<div>'+esc(p.clients.display_name)+'</div>':"";
+    const card='<div class="social-post-card '+esc(status)+'"><div class="social-post-meta"><span>'+socialCalendarPlatformIcon(p.platform)+'</span><span>'+esc(time)+'</span><span style="margin-left:auto;font-weight:500">'+esc(status.replace("_"," "))+'</span></div>'+client+'<div class="social-post-caption">'+esc(caption)+'</div>'+(p.post_url?'<div style="margin-top:5px"><a href="'+esc(p.post_url)+'" target="_blank" rel="noopener">View post ↗</a></div>':"")+'</div>';
+    html+=card;
+   });
+   html+='</div>';
+  }
+  html+='</div></div><div class="social-calendar-legend"><span><i class="social-calendar-dot"></i> Published</span><span><i class="social-calendar-dot" style="background:#f1f5ff;border-color:#d9e2ff"></i> Scheduled</span><span><i class="social-calendar-dot" style="background:#fff1f1;border-color:#ffd6d6"></i> Failed / rejected</span><span>📸 Instagram</span><span>🔵 Facebook</span></div>';
+  box.innerHTML=html;
  }catch(e){box.innerHTML='<div class="error-message">'+esc(e.message)+'</div>';}
 }
 function social(){setTimeout(loadSocialCalendar,0);return title("Social Media",state.user?.role==="admin"?"Agency-wide calendar across all clients.":"Your past, scheduled and upcoming social posts.",'<button class="btn btn-primary" onclick="uploadContent()">+ Add Post</button>')+'<div class="card"><div class="section-head"><h3>Social Media Calendar</h3><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button id="social-meta-sync-button" class="btn btn-light" onclick="syncSocialCalendarFromMeta()">↻ Sync Instagram & Facebook</button><select id="social-status-filter" onchange="loadSocialCalendar()" style="padding:9px;border:1px solid var(--line);border-radius:8px"><option value="all">All statuses</option><option value="draft">Draft</option><option value="pending_approval">Pending approval</option><option value="approved">Approved</option><option value="scheduled">Scheduled</option><option value="published">Published</option><option value="failed">Failed</option><option value="rejected">Rejected</option></select></div></div><div class="muted" style="margin:0 0 12px">Sync to import accessible published posts and scheduled Facebook Page posts, plus available Instagram media.</div><div id="social-calendar-live"></div></div>';}
