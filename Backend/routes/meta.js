@@ -55,6 +55,9 @@ module.exports = (supabase, authenticateToken) => {
         return fail(res, 409, "The Meta connection has expired. Please reconnect Meta.", "META_TOKEN_EXPIRED");
       }
       if (err.isRateLimit) return fail(res, 429, "Meta rate limit reached. Try again in a few minutes.", "META_RATE_LIMIT");
+      if (err.metaCode === 10 || /pages_read_engagement|Page Public Content Access/i.test(err.message || "")) {
+        return fail(res, 502, "Meta permission required: reconnect the Facebook account and approve pages_read_engagement. If it is still denied, enable/obtain Meta's Page Public Content Access feature for this app. Then retry the calendar sync.", "META_PERMISSION_REQUIRED");
+      }
       return fail(res, 502, `Meta API error: ${err.message}`, "META_API_ERROR");
     }
     if (err?.badRequest) return fail(res, 400, err.message);
@@ -341,26 +344,39 @@ module.exports = (supabase, authenticateToken) => {
       const selected=requested.length?pages.filter(p=>requested.includes(p.id)):pages;
       if(requested.some(id=>!pages.some(p=>p.id===id)))return fail(res,403,"One or more Pages are not accessible to this Meta connection");
       let synced=0;
+      const warnings=[];
       for(const p of selected){
-        const [published,scheduled]=await Promise.all([
-          meta.listPagePublishedPosts(p.id,p.access_token),
-          meta.listPageScheduledPosts(p.id,p.access_token).catch(e=>{if(e.metaCode===100||e.metaCode===10)return [];throw e;})
-        ]);
-        const rows=[
-          ...published.map(x=>({client_id:clientId,platform:"facebook",caption:x.message||"(No caption)",media_url:x.full_picture||null,post_url:x.permalink_url||null,platform_post_id:x.id,status:"published",published_at:x.created_time||null,scheduled_at:x.created_time||null,likes_count:x.likes?.summary?.total_count??null,comments_count:x.comments?.summary?.total_count??null,updated_at:new Date().toISOString()})),
-          ...scheduled.map(x=>({client_id:clientId,platform:"facebook",caption:x.message||"(No caption)",media_url:x.full_picture||null,post_url:x.permalink_url||null,platform_post_id:x.id,status:"scheduled",scheduled_at:x.scheduled_publish_time?new Date(Number(x.scheduled_publish_time)*1000).toISOString():null,updated_at:new Date().toISOString()}))
-        ];
+        const rows=[];
+        try {
+          const published=await meta.listPagePublishedPosts(p.id,p.access_token);
+          rows.push(...published.map(x=>({client_id:clientId,platform:"facebook",caption:x.message||"(No caption)",media_url:x.full_picture||null,post_url:x.permalink_url||null,platform_post_id:x.id,status:"published",published_at:x.created_time||null,scheduled_at:x.created_time||null,likes_count:x.likes?.summary?.total_count??null,comments_count:x.comments?.summary?.total_count??null,updated_at:new Date().toISOString()})));
+        } catch(e) {
+          if(e.metaCode===10 || /pages_read_engagement|Page Public Content Access/i.test(e.message||"")) warnings.push("Facebook published posts unavailable: grant pages_read_engagement or Page Public Content Access in Meta app settings, then reconnect.");
+          else throw e;
+        }
+        try {
+          const scheduled=await meta.listPageScheduledPosts(p.id,p.access_token);
+          rows.push(...scheduled.map(x=>({client_id:clientId,platform:"facebook",caption:x.message||"(No caption)",media_url:x.full_picture||null,post_url:x.permalink_url||null,platform_post_id:x.id,status:"scheduled",scheduled_at:x.scheduled_publish_time?new Date(Number(x.scheduled_publish_time)*1000).toISOString():null,updated_at:new Date().toISOString()})));
+        } catch(e) {
+          if(e.metaCode===100||e.metaCode===10) warnings.push("Scheduled Facebook posts are not accessible for at least one Page.");
+          else throw e;
+        }
         const igId=p.instagram_business_account?.id;
         if(igId){
-          const media=await meta.listInstagramMedia(igId,conn.token);
-          rows.push(...media.map(x=>({client_id:clientId,platform:"instagram",caption:x.caption||"(No caption)",media_url:x.media_url||null,post_url:x.permalink||null,platform_post_id:x.id,status:"published",published_at:x.timestamp||null,scheduled_at:x.timestamp||null,likes_count:x.like_count??null,comments_count:x.comments_count??null,updated_at:new Date().toISOString()})));
+          try {
+            const media=await meta.listInstagramMedia(igId,conn.token);
+            rows.push(...media.map(x=>({client_id:clientId,platform:"instagram",caption:x.caption||"(No caption)",media_url:x.media_url||null,post_url:x.permalink||null,platform_post_id:x.id,status:"published",published_at:x.timestamp||null,scheduled_at:x.timestamp||null,likes_count:x.like_count??null,comments_count:x.comments_count??null,updated_at:new Date().toISOString()})));
+          } catch(e) {
+            if(e.metaCode===10||e.metaCode===100) warnings.push("Instagram media unavailable: verify Instagram professional-account linkage and required permissions.");
+            else throw e;
+          }
         }
         for(let i=0;i<rows.length;i+=100){
           const {error}=await supabase.from("social_posts").upsert(rows.slice(i,i+100),{onConflict:"platform,platform_post_id"});
           if(error)throw error;synced+=Math.min(100,rows.length-i);
         }
       }
-      res.json({success:true,pagesSynced:selected.length,postsSynced:synced});
+      res.json({success:true,pagesSynced:selected.length,postsSynced:synced,warnings});
     }catch(err){await handleError(req,res,err,"meta-social-sync");}
   });
 
