@@ -2299,7 +2299,17 @@ function downloadGoogleAdsCsv(kind){
   const link=document.createElement('a');link.href='data:text/csv;charset=utf-8,%EF%BB%BF'+encodeURIComponent(csv);link.download='google-ads-'+kind+'-'+(googleAdsReportState.startDate||'report')+'-'+(googleAdsReportState.endDate||'')+'.csv';document.body.appendChild(link);link.click();link.remove();
 }
 function googleAdsSubtab(tab){
-  document.querySelectorAll("[data-google-subtab]").forEach(el=>{el.style.display=(el.dataset.googleSubtab===tab)?"":"none";});
+  const panels=[...document.querySelectorAll("[data-google-subtab]")];
+  const selected=panels.filter(el=>el.dataset.googleSubtab===tab);
+  panels.forEach(el=>{el.style.display="none";});
+  selected.forEach(el=>{
+    el.style.display="";
+    let parent=el.parentElement;
+    while(parent){
+      if(parent.matches && parent.matches("[data-google-subtab]")) parent.style.display="";
+      parent=parent.parentElement;
+    }
+  });
   document.querySelectorAll("[data-google-tab]").forEach(el=>{el.classList.toggle("active",el.dataset.googleTab===tab);});
   window.googleAdsActiveSubtab=tab;
 }
