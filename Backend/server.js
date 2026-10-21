@@ -170,6 +170,19 @@ app.get(
 );
 
 // ======================================================
+// Explicitly serve PWA assets from the repository root.
+app.get("/manifest.webmanifest", (req, res) => {
+  res.type("application/manifest+json").sendFile(path.join(__dirname, "..", "manifest.webmanifest"));
+});
+app.get("/service-worker.js", (req, res) => {
+  res.set("Service-Worker-Allowed", "/");
+  res.set("Cache-Control", "no-cache");
+  res.type("application/javascript").sendFile(path.join(__dirname, "..", "service-worker.js"));
+});
+app.get("/pwa-icon.svg", (req, res) => {
+  res.type("image/svg+xml").sendFile(path.join(__dirname, "..", "pwa-icon.svg"));
+});
+
 // Frontend
 // ======================================================
 
