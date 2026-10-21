@@ -62,3 +62,7 @@ jobs:
             echo "Checking $file"
             node --check "$file"
           done
+      - name: Run repository JavaScript syntax check
+        run: npm run check
+      - name: Run automated tests
+        run: npm test
