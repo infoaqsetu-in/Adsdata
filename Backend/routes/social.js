@@ -1,6 +1,29 @@
 const express=require("express");
 const router=express.Router();
 module.exports=(supabase,authenticateToken)=>{
+ router.post("/upload-media",authenticateToken,async(req,res)=>{
+  try{
+   const admin=req.user.role==="admin";
+   const clientId=String(admin?req.body?.clientId||"":req.user.clientId||"");
+   const fileName=String(req.body?.fileName||"").slice(0,180);
+   const mimeType=String(req.body?.mimeType||"");
+   const base64=String(req.body?.base64||"");
+   if(!clientId||!fileName||!base64)return res.status(400).json({success:false,message:"Client, file name and media file are required"});
+   const {data:client,error:clientError}=await supabase.from("clients").select("id").eq("id",clientId).maybeSingle();
+   if(clientError)throw clientError;if(!client)return res.status(404).json({success:false,message:"Client not found"});
+   const allowedTypes={"image/jpeg":"jpg","image/png":"png","image/webp":"webp","image/gif":"gif","video/mp4":"mp4","video/quicktime":"mov","video/webm":"webm"};
+   if(!allowedTypes[mimeType])return res.status(415).json({success:false,message:"Unsupported media type"});
+   const bytes=Buffer.from(base64,"base64");
+   if(!bytes.length||bytes.length>8*1024*1024)return res.status(413).json({success:false,message:"Media file must be between 1 byte and 8 MB"});
+   const safeName=fileName.replace(/[^a-zA-Z0-9._-]/g,"_").slice(-100);
+   const path=clientId+"/"+Date.now()+"-"+require("crypto").randomBytes(6).toString("hex")+"-"+(safeName||("upload."+allowedTypes[mimeType]));
+   const {data,error}=await supabase.storage.from("social-media").upload(path,bytes,{contentType:mimeType,upsert:false});
+   if(error)throw error;
+   const {data:publicData}=supabase.storage.from("social-media").getPublicUrl(data.path);
+   if(!publicData?.publicUrl)throw new Error("Could not create media URL");
+   res.status(201).json({success:true,url:publicData.publicUrl,path:data.path});
+  }catch(e){console.error("Social media upload error:",e?.message||e);res.status(500).json({success:false,message:"Unable to upload media. Confirm the social-media storage bucket migration has been run."});}
+ });
  router.get("/",authenticateToken,async(req,res)=>{
   try{
    const admin=req.user.role==="admin";
