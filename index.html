@@ -2599,6 +2599,7 @@ async function uploadContent(){
  const captionEl=overlay.querySelector('#aq-post-caption'),mediaEl=overlay.querySelector('#aq-post-media'),fileEl=overlay.querySelector('#aq-post-file');
  captionEl.addEventListener('input',()=>overlay.querySelector('#aq-post-preview').textContent=captionEl.value||'Your caption preview will appear here.');
  mediaEl.addEventListener('input',()=>{const img=overlay.querySelector('#aq-post-preview-image');if(mediaEl.value){img.src=mediaEl.value;img.style.display='block';}else{img.removeAttribute('src');img.style.display='none';}});
+ fileEl.addEventListener('change',()=>{const file=fileEl.files&&fileEl.files[0],img=overlay.querySelector('#aq-post-preview-image');if(file){mediaEl.value='';img.src=URL.createObjectURL(file);img.style.display='block';}else if(!mediaEl.value){img.removeAttribute('src');img.style.display='none';}});
  overlay.querySelector('#aq-post-schedule').addEventListener('change',e=>overlay.querySelector('#aq-post-schedule-fields').style.display=e.target.checked?'block':'none');
  overlay.querySelector('#aq-post-save').onclick=async()=>{
   const caption=captionEl.value.trim(),postUrl=overlay.querySelector('#aq-post-url').value.trim();let mediaUrl=mediaEl.value.trim();
