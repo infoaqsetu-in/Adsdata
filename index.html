@@ -567,9 +567,20 @@ button,input,select{font:inherit}
   }
 
   .brand div,
-  .nav button span,
+  .nav button span:not(.icon),
   .sidebar-footer{
     display:none
+  }
+
+  /* Keep navigation icons visible when the sidebar collapses on narrow screens
+     (including when DevTools reduces the page viewport). */
+  .nav button .icon{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:24px;
+    font-size:19px;
+    line-height:1
   }
 
   .brand{
