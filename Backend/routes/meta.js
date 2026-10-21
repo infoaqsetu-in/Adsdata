@@ -421,10 +421,28 @@ module.exports = (supabase, authenticateToken) => {
     try {
       const pages = await getOrganicDirectoryPages();
       if (!pages.length) { const details = (pages.diagnostics || []).map(d => d.clientId ? `${d.clientId}: ${d.issue}` : d.issue); return res.status(404).json({ success: false, message: "No Facebook Pages are accessible from the active Meta connections." + (details.length ? " Details: " + details.join(" | ") : " No diagnostic details were returned; verify the deployed backend version and database connection."), diagnostics: pages.diagnostics || [], nextStep: "Reconnect the Meta account that has access to the Facebook Pages and approve the requested Page permissions." }); }
+      // Enforce one-client ownership for each selected Facebook Page and linked Instagram account.
+      const { data: allAssignments, error: allAssignmentsError } = await supabase
+        .from("client_social_page_permissions")
+        .select("client_id,page_id,instagram_account_id,is_allowed")
+        .eq("is_allowed", true);
+      if (allAssignmentsError) throw allAssignmentsError;
       const { data: permissions, error: permissionError } = await supabase.from("client_social_page_permissions")
-        .select("page_id").eq("client_id", clientId).eq("is_allowed", true);
+        .select("page_id,instagram_account_id").eq("client_id", clientId).eq("is_allowed", true);
       if (permissionError) throw permissionError;
       const allowedIds = new Set((permissions || []).map(x => String(x.page_id)));
+      const thisInstagramIds = new Set((permissions || []).map(x => String(x.instagram_account_id || "")).filter(Boolean));
+      const conflicts = (allAssignments || []).filter(a =>
+        a.client_id !== clientId &&
+        (allowedIds.has(String(a.page_id)) || (a.instagram_account_id && thisInstagramIds.has(String(a.instagram_account_id))))
+      );
+      if (conflicts.length) {
+        return res.status(409).json({
+          success: false,
+          code: "SOCIAL_PAGE_ASSIGNMENT_CONFLICT",
+          message: "A Facebook Page or linked Instagram account assigned to this client is also assigned to another client. Correct the Page assignments in Integrations before syncing."
+        });
+      }
       const requested = Array.isArray(req.body?.pageIds) ? req.body.pageIds.map(String) : [];
       if (isAdmin && requested.some(id => !allowedIds.has(id))) return fail(res, 403, "Select only Pages assigned to this client. Save Page permissions first.");
       if (!allowedIds.size) return fail(res, 409, "No organic Pages are assigned to this client. Ask the agency admin to assign Pages in Integrations.");
