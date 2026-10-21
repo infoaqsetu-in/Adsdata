@@ -4,10 +4,26 @@ module.exports=(supabase,authenticateToken)=>{
  router.get("/",authenticateToken,async(req,res)=>{
   try{
    const admin=req.user.role==="admin";
-   const clientId=admin?String(req.query.clientId||""):req.user.clientId;
+   const clientId=admin?String(req.query.clientId||""):String(req.user.clientId||"");
+   if(!admin&&!clientId)return res.status(403).json({success:false,message:"Client account is not linked to a client"});
    let q=supabase.from("social_posts").select("*").order("scheduled_at",{ascending:false}).limit(1000);
-   if(!admin)q=q.eq("client_id",clientId); else if(clientId)q=q.eq("client_id",clientId);
-   const {data,error}=await q;if(error)throw error;res.json({success:true,posts:data||[]});
+   if(clientId)q=q.eq("client_id",clientId);
+   const {data,error}=await q;if(error)throw error;
+   let posts=data||[];
+   if(!admin){
+    // Client users may see imported Meta posts only when their Page is explicitly assigned.
+    // Keep manually created portal posts (no platform_post_id) visible, but hide legacy
+    // imported rows that have no page_id because their source Page cannot be verified.
+    const {data:permissions,error:permissionError}=await supabase.from("client_social_page_permissions")
+      .select("page_id").eq("client_id",clientId).eq("is_allowed",true);
+    if(permissionError)throw permissionError;
+    const allowedPageIds=new Set((permissions||[]).map(x=>String(x.page_id)));
+    posts=posts.filter(p=>{
+      if(p.platform_post_id)return Boolean(p.page_id)&&allowedPageIds.has(String(p.page_id));
+      return !p.page_id||allowedPageIds.has(String(p.page_id));
+    });
+   }
+   res.json({success:true,posts});
   }catch(e){console.error("Social posts error:",e?.message||e);res.status(500).json({success:false,message:"Unable to load social posts"});}
  });
  router.patch("/:id/status",authenticateToken,async(req,res)=>{
