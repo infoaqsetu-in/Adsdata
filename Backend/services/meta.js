@@ -168,10 +168,24 @@ function normalizeCampaign({ campaign, insight, clientId, adAccountId, currency,
 }
 
 // ---------- Organic Facebook / Instagram content ----------
-const listPages = token => graphGetAll("me/accounts", {
-  fields: "id,name,access_token,tasks,instagram_business_account{id,username}",
-  limit: 100
-}, token);
+// Pages may be granted through a Business Portfolio / task-based access. In that
+// case /me/accounts can validly return an empty list even when pages_show_list
+// is granted, so try the assigned-pages edge as a fallback.
+const listPages = async token => {
+  const fields = "id,name,access_token,tasks,instagram_business_account{id,username}";
+  const direct = await graphGetAll("me/accounts", { fields, limit: 100 }, token);
+  if (direct.length) return direct;
+
+  try {
+    const assigned = await graphGetAll("me/assigned_pages", { fields, limit: 100 }, token);
+    if (assigned.length) return assigned;
+  } catch (e) {
+    // Preserve the original empty result only for unsupported/unauthorized fallback.
+    // Other Graph errors are surfaced for diagnostics rather than silently swallowed.
+    if (![100, 10, 200].includes(e.metaCode)) throw e;
+  }
+  return direct;
+};
 
 // Return only permission names/statuses; never expose or log the access token.
 const listGrantedPermissions = async token => {
