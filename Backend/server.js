@@ -33,6 +33,7 @@ const authenticateToken = createAuthenticateToken(supabase);
 // Restrict cross-origin API access. Same-origin portal requests do not need CORS;
 // add any approved custom frontend origins to CORS_ORIGINS (comma-separated) in Hostinger.
 const allowedOrigins = new Set([
+  "https://clientportal.aqsetu.in",
   "https://darkgray-beaver-562547.hostingersite.com",
   "http://localhost:5000",
   "http://localhost:3000",
