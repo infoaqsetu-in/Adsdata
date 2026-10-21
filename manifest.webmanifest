@@ -1,0 +1,24 @@
+{
+  "id": "/",
+  "name": "AQ Setu Client Portal",
+  "short_name": "AQ Setu",
+  "description": "AQ Setu Client Portal for marketing performance, campaigns, leads, and reports.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "orientation": "any",
+  "background_color": "#F5F7FA",
+  "theme_color": "#2E8B57",
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
