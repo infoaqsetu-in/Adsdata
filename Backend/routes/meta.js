@@ -436,14 +436,14 @@ module.exports = (supabase, authenticateToken) => {
         const rows = [];
         try {
           const published = await meta.listPagePublishedPosts(p.id, p.access_token || p._accessToken);
-          rows.push(...published.map(x => ({client_id:clientId,platform:"facebook",caption:x.message||"(No caption)",media_url:x.full_picture||null,post_url:x.permalink_url||null,platform_post_id:x.id,status:"published",published_at:x.created_time||null,scheduled_at:x.created_time||null,likes_count:x.likes?.summary?.total_count??null,comments_count:x.comments?.summary?.total_count??null,updated_at:new Date().toISOString()})));
+          rows.push(...published.map(x => ({client_id:clientId,page_id:String(p.id),page_name:p.name,platform:"facebook",caption:x.message||"(No caption)",media_url:x.full_picture||null,post_url:x.permalink_url||null,platform_post_id:x.id,status:"published",published_at:x.created_time||null,scheduled_at:x.created_time||null,likes_count:x.likes?.summary?.total_count??null,comments_count:x.comments?.summary?.total_count??null,updated_at:new Date().toISOString()})));
         } catch (e) {
           if (e.metaCode === 10 || /pages_read_engagement|Page Public Content Access/i.test(e.message || "")) warnings.push("Facebook published posts unavailable: grant pages_read_engagement or Page Public Content Access, then reconnect.");
           else throw e;
         }
         try {
           const scheduled = await meta.listPageScheduledPosts(p.id, p.access_token || p._accessToken);
-          rows.push(...scheduled.map(x => ({client_id:clientId,platform:"facebook",caption:x.message||"(No caption)",media_url:x.full_picture||null,post_url:x.permalink_url||null,platform_post_id:x.id,status:"scheduled",scheduled_at:x.scheduled_publish_time?new Date(Number(x.scheduled_publish_time)*1000).toISOString():null,updated_at:new Date().toISOString()})));
+          rows.push(...scheduled.map(x => ({client_id:clientId,page_id:String(p.id),page_name:p.name,platform:"facebook",caption:x.message||"(No caption)",media_url:x.full_picture||null,post_url:x.permalink_url||null,platform_post_id:x.id,status:"scheduled",scheduled_at:x.scheduled_publish_time?new Date(Number(x.scheduled_publish_time)*1000).toISOString():null,updated_at:new Date().toISOString()})));
         } catch (e) {
           if (e.metaCode === 100 || e.metaCode === 10) warnings.push("Scheduled Facebook posts are not accessible for at least one assigned Page.");
           else throw e;
@@ -452,7 +452,7 @@ module.exports = (supabase, authenticateToken) => {
         if (igId) {
           try {
             const media = await meta.listInstagramMedia(igId, p.access_token || p._accessToken);
-            rows.push(...media.map(x => ({client_id:clientId,platform:"instagram",caption:x.caption||"(No caption)",media_url:x.media_url||null,post_url:x.permalink||null,platform_post_id:x.id,status:"published",published_at:x.timestamp||null,scheduled_at:x.timestamp||null,likes_count:x.like_count??null,comments_count:x.comments_count??null,updated_at:new Date().toISOString()})));
+            rows.push(...media.map(x => ({client_id:clientId,page_id:String(p.id),page_name:p.name,platform_account_id:igId,platform_account_name:p.instagram_business_account?.username||null,platform:"instagram",caption:x.caption||"(No caption)",media_url:x.media_url||null,post_url:x.permalink||null,platform_post_id:x.id,status:"published",published_at:x.timestamp||null,scheduled_at:x.timestamp||null,likes_count:x.like_count??null,comments_count:x.comments_count??null,updated_at:new Date().toISOString()})));
           } catch (e) {
             if (e.metaCode === 10 || e.metaCode === 100) warnings.push("Instagram media unavailable: verify the linked professional account and Meta permissions.");
             else throw e;
