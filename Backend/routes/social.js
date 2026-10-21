@@ -38,12 +38,25 @@ module.exports=(supabase,authenticateToken)=>{
     // Keep manually created portal posts (no platform_post_id) visible, but hide legacy
     // imported rows that have no page_id because their source Page cannot be verified.
     const {data:permissions,error:permissionError}=await supabase.from("client_social_page_permissions")
-      .select("page_id").eq("client_id",clientId).eq("is_allowed",true);
+      .select("page_id,instagram_account_id").eq("client_id",clientId).eq("is_allowed",true);
     if(permissionError)throw permissionError;
     const allowedPageIds=new Set((permissions||[]).map(x=>String(x.page_id)));
+    const allowedInstagramIds=new Set((permissions||[]).map(x=>String(x.instagram_account_id||"")).filter(Boolean));
     posts=posts.filter(p=>{
-      if(p.platform_post_id)return Boolean(p.page_id)&&allowedPageIds.has(String(p.page_id));
-      return !p.page_id||allowedPageIds.has(String(p.page_id));
+      const pageId=String(p.page_id||"");
+      const accountId=String(p.platform_account_id||"");
+      const platform=String(p.platform||"").toLowerCase();
+      // Imported rows must match both the assigned Page and, for Instagram,
+      // the Instagram professional account linked to that Page. This prevents
+      // legacy/mislabelled rows from another client's Instagram account leaking
+      // into this client's calendar just because their page_id was incorrect.
+      if(p.platform_post_id){
+        if(!pageId||!allowedPageIds.has(pageId))return false;
+        if(platform==="instagram" && accountId && !allowedInstagramIds.has(accountId))return false;
+        if(platform==="facebook" && accountId && accountId!==pageId)return false;
+        return true;
+      }
+      return !p.page_id||allowedPageIds.has(pageId);
     });
    }
    res.json({success:true,posts});
