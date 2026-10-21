@@ -183,6 +183,14 @@ app.get("/pwa-icon.svg", (req, res) => {
   res.type("image/svg+xml").sendFile(path.join(__dirname, "..", "pwa-icon.svg"));
 });
 
+// Public Meta app compliance pages
+app.get("/privacy-policy.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "..", "privacy-policy.html"));
+});
+app.get("/data-deletion.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "..", "data-deletion.html"));
+});
+
 // Frontend
 // ======================================================
 
