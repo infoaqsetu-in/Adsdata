@@ -654,6 +654,29 @@ button,input,select{font:inherit}
 .social-calendar-legend span{display:flex;gap:5px;align-items:center}
 .social-calendar-dot{width:9px;height:9px;border-radius:3px;display:inline-block;background:#eff8f4;border:1px solid #dceee7}
 @media(max-width:900px){.social-calendar-grid{grid-template-columns:repeat(7,minmax(145px,1fr))}.social-calendar-day{min-height:110px}}
+
+/* Small usability polish: clearer focus, restrained highlights, and safer small-screen tables */
+:focus-visible{outline:3px solid rgba(90,63,160,.35);outline-offset:2px}
+.btn,.nav button,.tabs button,.social-calendar-nav button{transition:background-color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease}
+.btn:hover{box-shadow:0 3px 10px rgba(30,35,45,.10)}
+.btn:active{transform:translateY(1px)}
+.card{transition:border-color .16s ease,box-shadow .16s ease}
+.card:hover{border-color:#d8d2eb;box-shadow:0 4px 16px rgba(30,35,45,.055)}
+.nav button:focus-visible,.tabs button:focus-visible{outline-offset:1px}
+.table-wrap,.table-responsive{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.table{min-width:560px}
+input,select,textarea{max-width:100%}
+input:focus,select:focus,textarea:focus{border-color:var(--purple);box-shadow:0 0 0 3px rgba(90,63,160,.09);outline:none}
+@media(max-width:600px){
+  .page-title{align-items:flex-start;gap:12px;flex-wrap:wrap}
+  .page-title .btn,.page-title button{max-width:100%}
+  .topbar{gap:10px}
+  .user{gap:7px}
+  .card{padding:15px;border-radius:12px}
+  .empty{padding:30px 16px}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
 </style>
 </head>
 
