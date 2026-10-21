@@ -220,7 +220,7 @@ module.exports = (supabase, authenticateToken) => {
       redirect_uri: process.env.META_REDIRECT_URI,
       response_type: "code",
       state,
-      scope: "ads_read,ads_management,pages_show_list,pages_read_engagement,instagram_basic"
+      scope: "ads_read,ads_management,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,instagram_basic,instagram_manage_insights,instagram_content_publish"
     });
     res.json({ success: true, authUrl: `https://www.facebook.com/${process.env.META_API_VERSION || "v26.0"}/dialog/oauth?${params}` });
   });
@@ -320,7 +320,26 @@ module.exports = (supabase, authenticateToken) => {
         const token = decryptToken(row.access_token);
         const pages = await meta.listPages(token);
         if (!pages.length) {
-          diagnostics.push({ clientId: row.client_id, issue: "Meta returned no Pages for this connection. Check the Facebook user, Page access, and approved permissions." });
+          let granted = [];
+          let permissionDiagnostic = "";
+          try {
+            granted = await meta.listGrantedPermissions(token);
+            const relevant = granted.filter(p => [
+              "pages_show_list", "pages_read_engagement", "pages_read_user_content",
+              "pages_manage_posts", "instagram_basic", "instagram_manage_insights",
+              "instagram_content_publish", "business_management"
+            ].includes(p.permission));
+            permissionDiagnostic = relevant.length
+              ? " Granted permissions: " + relevant.map(p => p.permission + "=" + p.status).join(", ") + "."
+              : " Meta did not report any of the expected Page/Instagram permissions as granted.";
+          } catch (permissionError) {
+            permissionDiagnostic = " Could not inspect granted permissions (" + (permissionError?.message || "Meta API error") + ").";
+          }
+          diagnostics.push({
+            clientId: row.client_id,
+            issue: "Meta returned zero Facebook Pages for this connection." + permissionDiagnostic +
+              " Reconnect using the Facebook profile that has Facebook Page access, and approve Page access in the consent screen. Selecting a Page in the consent screen alone does not guarantee the saved token has the required granted permissions."
+          });
         }
         for (const page of pages) {
           const key = String(page.id);
