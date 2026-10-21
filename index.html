@@ -719,7 +719,7 @@ const clientPages = [
   "Leads",
   "Social Media",
   "Content Approval",
-  "SEO",
+  "Search Console",
   "Reports",
   "Notifications",
   "Profile"
@@ -738,7 +738,7 @@ const icons = {
   "Leads":"♙",
   "Social Media":"◫",
   "Content Approval":"✓",
-  "SEO":"⌕",
+  "Search Console":"⌕",
   "Reports":"▤",
   "Notifications":"♢",
   "Profile":"⚙"
@@ -1666,7 +1666,7 @@ function pageContent(){
     case "Content Approval":
       return approval();
 
-    case "SEO":
+    case "Search Console":
       return seo();
 
     case "Reports":
@@ -2588,22 +2588,51 @@ async function updateApproval(id,status){
  catch(e){alert(e.message);}
 }
 async function uploadContent(){
- const admin=state.user?.role==="admin";let clientId;
- if(admin){
-  const d=await apiRequest('/api/admin/overview');
-  const clients=d.clients||[];
+ let clients=[];
+ if(state.user?.role==="admin"){
+  try{const d=await apiRequest('/api/admin/overview');clients=d.clients||[];}catch(e){alert(e.message);return;}
   if(!clients.length){alert('Create a client first.');return;}
-  const choices=clients.map((c,i)=>(i+1)+'. '+c.display_name).join('\n');
-  const choice=prompt('Choose client number:\n'+choices,'1');if(choice===null)return;
-  const idx=Number(choice)-1;if(!Number.isInteger(idx)||idx<0||idx>=clients.length){alert('Invalid client selection.');return;}clientId=clients[idx].id;
  }
- const caption=prompt('Enter the post caption:');if(!caption?.trim())return;
- const platform=(prompt('Platform: instagram, facebook, linkedin, tiktok, or other','instagram')||'').trim().toLowerCase();
- if(!['instagram','facebook','linkedin','tiktok','other'].includes(platform)){alert('Unsupported platform.');return;}
- const scheduledAt=prompt('Schedule date/time (optional, e.g. 2026-10-20T10:00:00) or leave blank:');if(scheduledAt===null)return;
- const postUrl=prompt('Post URL (optional):')||'';
- try{await apiRequest('/api/social-posts',{method:'POST',body:JSON.stringify({clientId,caption:caption.trim(),platform,scheduledAt:scheduledAt.trim()||null,postUrl:postUrl.trim()||null,status:'pending_approval'})});alert('Content saved and submitted for approval.');await loadApprovalItems();}
- catch(e){alert(e.message);}
+ const overlay=document.createElement('div');
+ overlay.id='aq-post-composer-overlay';
+ overlay.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.58);display:flex;align-items:center;justify-content:center;padding:18px;overflow:auto';
+ const isAdmin=state.user?.role==="admin";
+ overlay.innerHTML='<div style="width:min(100%,980px);max-height:94vh;overflow:auto;background:var(--card,#fff);color:var(--text,#172033);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.28);display:grid;grid-template-columns:minmax(0,1.1fr) minmax(260px,.9fr)">'+
+ '<section style="padding:24px;min-width:0"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><div><h2 style="margin:0 0 5px">Create post</h2><p class="muted" style="margin:0">Prepare content and choose when it should appear.</p></div><button type="button" id="aq-post-close" class="btn btn-light">✕</button></div>'+
+ (isAdmin?'<div class="field" style="margin-top:20px"><label for="aq-post-client">Client</label><select id="aq-post-client" required style="width:100%;padding:11px;border:1px solid var(--line);border-radius:8px">'+clients.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.display_name)+'</option>').join('')+'</select></div>':'')+
+ '<div class="field" style="margin-top:18px"><label>Post to</label><div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px"><label><input type="checkbox" id="aq-post-facebook" checked> Facebook</label><label><input type="checkbox" id="aq-post-instagram" checked> Instagram</label></div><p class="muted" style="font-size:12px;margin-top:6px">A separate calendar entry will be created for each selected platform.</p></div>'+
+ '<div class="field"><label for="aq-post-caption">Text / caption</label><textarea id="aq-post-caption" rows="5" placeholder="Write your post caption…" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--line);border-radius:8px;resize:vertical"></textarea></div>'+
+ '<div class="field"><label for="aq-post-media">Media URL (optional)</label><input id="aq-post-media" type="url" placeholder="https://… image or video URL" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--line);border-radius:8px"></div>'+
+ '<div class="field"><label for="aq-post-url">Published post URL (optional)</label><input id="aq-post-url" type="url" placeholder="https://…" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--line);border-radius:8px"></div>'+
+ '<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:22px"><button type="button" id="aq-post-cancel" class="btn btn-light">Cancel</button><button type="button" id="aq-post-save" class="btn btn-primary">Submit for approval</button></div></section>'+
+ '<aside style="padding:24px;background:var(--soft,#f4f6fa);border-left:1px solid var(--line);min-width:0"><h3 style="margin-top:0">Schedule</h3><p class="muted">Choose a date and time like Meta Business Suite. Leave scheduling off to save this as pending approval.</p>'+
+ '<label style="display:flex;align-items:center;gap:8px;margin:16px 0"><input type="checkbox" id="aq-post-schedule"> Set date and time</label>'+
+ '<div id="aq-post-schedule-fields" style="display:none"><div class="field"><label for="aq-post-date">Date</label><input id="aq-post-date" type="date" min="'+new Date().toISOString().slice(0,10)+'" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--line);border-radius:8px"></div><div class="field"><label for="aq-post-time">Time</label><input id="aq-post-time" type="time" value="10:00" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--line);border-radius:8px"></div></div>'+
+ '<div style="margin-top:24px;padding:16px;background:var(--card,#fff);border:1px solid var(--line);border-radius:12px"><div class="muted" style="font-size:12px;margin-bottom:8px">POST PREVIEW</div><strong id="aq-post-preview-title">Your post</strong><p id="aq-post-preview" style="white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:0">Your caption preview will appear here.</p><img id="aq-post-preview-image" alt="Post media preview" style="display:none;max-width:100%;max-height:190px;object-fit:contain;margin-top:12px;border-radius:8px"></div></aside></div>';
+ document.body.appendChild(overlay);
+ const close=()=>overlay.remove();
+ overlay.querySelector('#aq-post-close').onclick=close;overlay.querySelector('#aq-post-cancel').onclick=close;
+ overlay.addEventListener('click',e=>{if(e.target===overlay)close();});
+ const captionEl=overlay.querySelector('#aq-post-caption'),mediaEl=overlay.querySelector('#aq-post-media');
+ captionEl.addEventListener('input',()=>overlay.querySelector('#aq-post-preview').textContent=captionEl.value||'Your caption preview will appear here.');
+ mediaEl.addEventListener('input',()=>{const img=overlay.querySelector('#aq-post-preview-image');if(mediaEl.value){img.src=mediaEl.value;img.style.display='block';}else{img.removeAttribute('src');img.style.display='none';}});
+ overlay.querySelector('#aq-post-schedule').addEventListener('change',e=>overlay.querySelector('#aq-post-schedule-fields').style.display=e.target.checked?'block':'none');
+ overlay.querySelector('#aq-post-save').onclick=async()=>{
+  const caption=captionEl.value.trim(),mediaUrl=mediaEl.value.trim(),postUrl=overlay.querySelector('#aq-post-url').value.trim();
+  const platforms=['facebook','instagram'].filter(p=>overlay.querySelector('#aq-post-'+p).checked);
+  if(!caption){alert('Please enter a caption.');return;}
+  if(!platforms.length){alert('Select Facebook, Instagram, or both.');return;}
+  const schedule=overlay.querySelector('#aq-post-schedule').checked;
+  let scheduledAt=null;
+  if(schedule){const date=overlay.querySelector('#aq-post-date').value,time=overlay.querySelector('#aq-post-time').value;if(!date||!time){alert('Choose both a schedule date and time.');return;}scheduledAt=new Date(date+'T'+time).toISOString();if(new Date(scheduledAt)<=new Date()){alert('Choose a future date and time.');return;}}
+  const clientId=isAdmin?overlay.querySelector('#aq-post-client').value:undefined;
+  const button=overlay.querySelector('#aq-post-save');button.disabled=true;button.textContent='Saving…';
+  try{
+   for(const platform of platforms)await apiRequest('/api/social-posts',{method:'POST',body:JSON.stringify({clientId,caption,platform,scheduledAt,mediaUrl:mediaUrl||null,postUrl:postUrl||null,status:'pending_approval'})});
+   close();alert('Post saved for '+platforms.map(x=>x==='facebook'?'Facebook':'Instagram').join(' and ')+'. '+(schedule?'Scheduled date saved; approval is still required.':'Submitted for approval.'));await loadSocialCalendar();await loadApprovalItems();
+  }catch(e){button.disabled=false;button.textContent='Submit for approval';alert(e.message);}
+ };
+ captionEl.focus();
 }
 function approval(){
  setTimeout(loadApprovalItems,0);
@@ -2616,7 +2645,7 @@ function approval(){
    ========================================================= */
 
 async function loadSeoStatus(){
- try{const d=await apiRequest("/api/seo/status");state.seoStatus=d;state.seoEnabled=Boolean(d.enabled);if(!state.seoEnabled&&state.page==="SEO")state.page="Dashboard";}
+ try{const d=await apiRequest("/api/seo/status");state.seoStatus=d;state.seoEnabled=Boolean(d.enabled);if(!state.seoEnabled&&state.page==="Search Console")state.page="Dashboard";}
  catch(e){state.seoStatus={error:e.message};state.seoEnabled=false;}
 }
 function seoTrendChart(history){
@@ -2647,15 +2676,15 @@ async function loadSeoData(){
 function chooseSeoDateRange(){alert("The integration syncs the latest available 28-day Search Console query window.");}
 function seo(){
  setTimeout(()=>{if(!state.seoData&&!state.seoLoading)loadSeoData();},0);
- if(!state.seoEnabled)return title("SEO Overview","SEO service is not enabled for this account.")+'<div class="card">SEO reporting is available only to clients who purchased SEO services. Contact AQ Setu to enable it.</div>';
+ if(!state.seoEnabled)return title("Search Console Overview","Search Console is not enabled for this account.")+'<div class="card">Search Console reporting is available only to clients who have this integration enabled. Contact AQ Setu to enable it.</div>';
  const d=state.seoData||{},snaps=d.snapshots||[],gsc=snaps.find(x=>x.provider==="search_console"),history=snaps.filter(x=>x.provider==="search_console").slice(0,10),p=gsc?.payload||{},queries=p.queries||[],pages=p.pages||[];
  const syncedAt=gsc?.created_at?new Date(gsc.created_at).toLocaleString("en-IN"):"Not synced";
  const prev=p.previous||null;
  const delta=(now,before,percent=true)=>{if(!prev||before==null||now==null)return "No comparison yet";const diff=Number(now)-Number(before);if(percent){if(Number(before)===0)return diff===0?"No change":"New activity";return (diff>0?"+":"")+((diff/Number(before))*100).toFixed(1)+"% vs previous 28 days";}return (diff>0?"+":"")+diff.toFixed(2)+" vs previous 28 days";};
  const metric=(label,value,sub="")=>'<div class="card kpi"><div class="label">'+esc(label)+'</div><div class="value" style="font-size:22px">'+esc(value)+'</div>'+(sub?'<div class="muted" style="font-size:12px;margin-top:6px">'+esc(sub)+'</div>':'')+'</div>';
  const table=(headers,rows)=>'<div style="overflow-x:auto"><table class="table"><thead><tr>'+headers.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
- return title("SEO Performance","Google Search Console performance for your website.",'<button class="btn btn-light" onclick="exportSeoCsv()">Export CSV</button> <button class="btn btn-light" onclick="loadSeoData()">Refresh data</button>')
- + '<div class="card" style="margin-bottom:16px"><div class="section-head"><div><h3 style="margin:0">Website overview</h3><div class="muted">'+esc(d.siteUrl||state.seoStatus?.siteUrl||"Website not configured")+'</div></div><span class="badge '+(gsc?'green':'')+'">'+(gsc?'Connected':'Awaiting data')+'</span></div><p class="muted" style="margin-bottom:0">'+(gsc?'Last successful snapshot: '+esc(syncedAt)+'. Report period: '+esc(p.startDate||"—")+' to '+esc(p.endDate||"—")+'. '+(prev?'Compared with '+esc(prev.startDate||"—")+' to '+esc(prev.endDate||"—")+'.':'Previous-period comparison is not available yet; run a new sync.'):'No Search Console snapshot is available yet. Ask your AQ Setu administrator to check the property and sync status.')+'</p>'+(state.seoLoading?'<p>Refreshing SEO data…</p>':'')+(d.error?'<p class="error-message">'+esc(d.error)+'</p>':'')+'</div>'
+ return title("Search Console Performance","Google Search Console performance for your website.",'<button class="btn btn-light" onclick="exportSeoCsv()">Export CSV</button> <button class="btn btn-light" onclick="loadSeoData()">Refresh data</button>')
+ + '<div class="card" style="margin-bottom:16px"><div class="section-head"><div><h3 style="margin:0">Website overview</h3><div class="muted">'+esc(d.siteUrl||state.seoStatus?.siteUrl||"Website not configured")+'</div></div><span class="badge '+(gsc?'green':'')+'">'+(gsc?'Connected':'Awaiting data')+'</span></div><p class="muted" style="margin-bottom:0">'+(gsc?'Last successful snapshot: '+esc(syncedAt)+'. Report period: '+esc(p.startDate||"—")+' to '+esc(p.endDate||"—")+'. '+(prev?'Compared with '+esc(prev.startDate||"—")+' to '+esc(prev.endDate||"—")+'.':'Previous-period comparison is not available yet; run a new sync.'):'No Search Console snapshot is available yet. Ask your AQ Setu administrator to check the property and sync status.')+'</p>'+(state.seoLoading?'<p>Refreshing Search Console data…</p>':'')+(d.error?'<p class="error-message">'+esc(d.error)+'</p>':'')+'</div>'
  + '<div class="grid three">'+metric("Organic clicks",gsc?fmtNum(p.clicks):"—",gsc?delta(p.clicks,prev?.clicks):"Clicks from Google Search") + metric("Impressions",gsc?fmtNum(p.impressions):"—",gsc?delta(p.impressions,prev?.impressions):"Appearances in search results") + metric("Average position",gsc&&p.averagePosition!=null?Number(p.averagePosition).toFixed(1):"—",gsc&&prev?delta(p.averagePosition,prev.averagePosition,false):"Lower is generally better") + metric("Click-through rate",gsc&&p.ctr!=null?(Number(p.ctr)*100).toFixed(2)+"%":"—",gsc&&prev?((Number(p.ctr)-Number(prev.ctr))*100).toFixed(2)+" percentage points vs previous 28 days":"Clicks divided by impressions") + metric("Queries returned",gsc?fmtNum(queries.length):"—","Top query rows returned by Search Console") + metric("Landing pages",gsc?fmtNum(pages.length):"—","Top page rows returned by Search Console")+'</div>'
  + '<div class="grid two" style="margin-top:16px"><div class="card"><div class="section-head"><h3>Top search queries</h3><button class="btn btn-light" onclick="state.seoShowAllKeywords=!state.seoShowAllKeywords;render()">'+(state.seoShowAllKeywords?'Show less':'View all')+'</button></div>'+(queries.length?table(["Query","Clicks","Impressions","Position"],queries.slice(0,state.seoShowAllKeywords?100:10).map(q=>'<tr><td>'+esc(q.query)+'</td><td>'+fmtNum(q.clicks)+'</td><td>'+fmtNum(q.impressions)+'</td><td>'+Number(q.position||0).toFixed(1)+'</td></tr>').join('')):'<p class="muted">No query rows available yet. Run a new sync to load them.</p>')+'</div><div class="card"><h3>Top landing pages</h3>'+(pages.length?table(["Page","Clicks","Impressions","CTR"],pages.slice(0,10).map(q=>'<tr><td style="max-width:240px;overflow-wrap:anywhere">'+esc(q.page)+'</td><td>'+fmtNum(q.clicks)+'</td><td>'+fmtNum(q.impressions)+'</td><td>'+(Number(q.ctr||0)*100).toFixed(2)+'%</td></tr>').join('')):'<p class="muted">Landing-page data will appear after the next Search Console sync.</p>')+'</div></div>'
  + '<div class="card" style="margin-top:16px"><h3>Search performance trend</h3>'+seoTrendChart(history)+'</div>'
