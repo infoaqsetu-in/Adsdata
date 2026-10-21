@@ -5,7 +5,9 @@
   "main": "Backend/server.js",
   "scripts": {
     "start": "node Backend/server.js",
-    "dev": "nodemon Backend/server.js"
+    "dev": "nodemon Backend/server.js",
+    "check": "node scripts/check-js.js",
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",
