@@ -47,7 +47,7 @@ app.use(cors({
   credentials: false
 }));
 // CSV rows are sent as JSON during admin imports (up to 1,000 rows / 5 MB file).
-app.use(express.json({ limit: "12mb" }));
+app.use(express.json({ limit: "12mb", verify: (req, res, buffer) => { req.rawBody = Buffer.from(buffer); } }));
 
 // Serve frontend from aqsetu_app folder
 // Only the two public frontend files are served. (Serving the whole app folder
@@ -100,6 +100,9 @@ app.use("/api/social-posts", socialRoutes(supabase, authenticateToken));
 app.use("/api/seo", seoRoutes(supabase, authenticateToken));
 app.use("/api/google-ads", googleAdsRoutes(supabase, authenticateToken));
 app.use("/api/notifications", notificationRoutes(supabase, authenticateToken));
+// Public Meta webhook endpoint; authenticity is verified using X-Hub-Signature-256.
+const instagramWebhookRoutes = require("./routes/instagram-webhook");
+app.use("/api/instagram-webhook", instagramWebhookRoutes(supabase));
 // ======================================================
 // Health Check
 // ======================================================
