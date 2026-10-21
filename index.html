@@ -2689,20 +2689,47 @@ function reports(){
    NOTIFICATIONS
    ========================================================= */
 
-function notifications(){
- const items=[
-  ["New lead received from Meta Ads campaign.","2 min ago"],
-  ["Creative needs your approval.","15 min ago"],
-  ["Monthly report is ready to view.","1 hr ago"],
-  ["Google Ads campaign budget almost reached.","3 hrs ago"],
-  ["New comment on approved post.","5 hrs ago"]
- ];
- const read=localStorage.getItem("aqsetu_notifications_read")==="true";
- return title("Notifications","Recent portal activity. These are demo notifications until event-based notifications are connected.",'<button class="btn btn-light" onclick="markNotificationsRead()">'+(read?'All read':'Mark all as read')+'</button>')
- + '<div class="card">'+items.map(item=>'<div class="notification" style="opacity:'+(read?'.65':'1')+'"><div class="dot" style="'+(read?'background:#cbd5e1':'')+'"></div><div><b>'+esc(item[0])+'</b><div class="muted" style="font-size:12px;margin-top:4px">'+esc(item[1])+'</div></div><span class="muted">'+(read?'Read':'Unread')+'</span></div>').join('')+'</div>';
-}
-function markNotificationsRead(){localStorage.setItem("aqsetu_notifications_read","true");render();}
+let notificationItems = [];
+let notificationLoadError = "";
 
+function notifications(){
+  setTimeout(loadNotifications, 0);
+  const unread = notificationItems.filter(n => !n.is_read).length;
+  const action = '<button class="btn btn-light" onclick="markAllNotificationsRead()">'+(unread ? 'Mark all as read' : 'All read')+'</button>';
+  const content = notificationLoadError
+    ? '<div class="card"><p>'+esc(notificationLoadError)+'</p><button class="btn btn-light" onclick="loadNotifications()">Retry</button></div>'
+    : notificationItems.length
+      ? '<div class="card">'+notificationItems.map(n => '<div class="notification" style="opacity:'+(n.is_read?'.65':'1')+';display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--line)"><div class="dot" style="'+(n.is_read?'background:#cbd5e1':'')+'"></div><div style="flex:1"><b>'+esc(n.title||'Notification')+'</b><div class="muted" style="font-size:12px;margin-top:4px">'+esc(n.message||'')+'</div><div class="muted" style="font-size:11px;margin-top:6px">'+esc(formatNotificationDate(n.created_at))+'</div></div>'+(n.is_read?'<span class="muted">Read</span>':'<button class="btn btn-light" onclick="markNotificationRead(\''+esc(n.id)+'\')">Mark read</button>')+(n.target_url?'<button class="btn btn-light" onclick="openNotificationTarget(\''+esc(n.id)+'\',\''+esc(n.target_url)+'\')">Open</button>':'')+'</div>').join('')+'</div>'
+      : '<div class="card"><p>No notifications yet. New leads and social post status changes will appear here.</p></div>';
+  return title("Notifications","Real portal activity for your account. Notifications are scoped to your role and client.",action)
+    + '<div id="notifications-unread" class="muted" style="margin-bottom:12px">'+unread+' unread notifications</div><div id="notifications-live">'+content+'</div>';
+}
+function formatNotificationDate(value){
+  if(!value)return "Date unavailable";
+  const d=new Date(value);return Number.isNaN(d.getTime())?String(value):d.toLocaleString();
+}
+async function loadNotifications(){
+  const host=document.getElementById('notifications-live');
+  try{
+    const d=await apiRequest('/api/notifications');
+    notificationItems=d.notifications||[];notificationLoadError="";
+  }catch(e){notificationLoadError=e.message||'Unable to load notifications.';}
+  if(state.page==='Notifications')render();
+}
+async function markNotificationRead(id){
+  try{await apiRequest('/api/notifications/'+encodeURIComponent(id)+'/read',{method:'PATCH',body:JSON.stringify({})});await loadNotifications();}
+  catch(e){alert(e.message);}
+}
+async function markAllNotificationsRead(){
+  try{await apiRequest('/api/notifications/read-all',{method:'POST',body:JSON.stringify({})});await loadNotifications();}
+  catch(e){alert(e.message);}
+}
+async function openNotificationTarget(id,target){
+  try{await apiRequest('/api/notifications/'+encodeURIComponent(id)+'/read',{method:'PATCH',body:JSON.stringify({})});}
+  catch(e){alert(e.message);return;}
+  const allowed=['Leads','Social Media','Reports'];
+  if(allowed.includes(target))go(target);else go('Dashboard');
+}
 /* =========================================================
    PROFILE
    ========================================================= */
