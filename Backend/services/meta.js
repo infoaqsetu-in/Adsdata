@@ -169,9 +169,18 @@ function normalizeCampaign({ campaign, insight, clientId, adAccountId, currency,
 
 // ---------- Organic Facebook / Instagram content ----------
 const listPages = token => graphGetAll("me/accounts", {
-  fields: "id,name,access_token,instagram_business_account{id,username}",
+  fields: "id,name,access_token,tasks,instagram_business_account{id,username}",
   limit: 100
 }, token);
+
+// Return only permission names/statuses; never expose or log the access token.
+const listGrantedPermissions = async token => {
+  const body = await graphRequest("me/permissions", {}, token);
+  return (body.data || []).map(p => ({
+    permission: String(p.permission || ""),
+    status: String(p.status || "unknown")
+  }));
+};
 
 const listPagePublishedPosts = (pageId, pageToken) => graphGetAll(`${pageId}/published_posts`, {
   fields: "id,message,created_time,permalink_url,full_picture,shares,likes.summary(true),comments.summary(true)",
@@ -199,6 +208,6 @@ module.exports = {
   MetaApiError, graphRequest, graphGetAll, isValidAdAccountId,
   listAdAccounts, getMe, listCampaigns, listCampaignInsights,
   resolveDateRange, normalizeCampaign, PRESETS,
-  listPages, listPagePublishedPosts, listPageScheduledPosts,
+  listPages, listGrantedPermissions, listPagePublishedPosts, listPageScheduledPosts,
   listInstagramMedia: listInstagramMediaWithToken
 };
