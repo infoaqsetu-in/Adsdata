@@ -1736,7 +1736,7 @@ function adminOverview(){
     + '<div class="card kpi"><div class="label">Campaign-reported leads</div><div class="value">'+fmtNum(leads)+'</div><div class="muted" style="font-size:12px;margin-top:6px">From campaign performance data; not individual lead records.</div></div>'
     + '</div><div style="height:16px"></div>'
     + '<div class="card"><div class="section-head"><h3>Clients</h3><span class="badge purple">Agency view</span></div>'
-    + (clients.length ? '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Client</th><th>Code</th><th>Users</th><th>Spend</th><th>Clicks</th><th>Leads</th><th>Status</th></tr></thead><tbody>'
+    + (clients.length ? '<div style="overflow-x:auto"><table class="table"><thead><tr><th>Client</th><th>Code</th><th>Users</th><th>Spend</th><th>Clicks</th><th>Campaign-reported leads</th><th>Status</th></tr></thead><tbody>'
       + clients.map(c=>'<tr><td><b>'+esc(c.display_name)+'</b><div class="muted">'+esc(c.company_name)+'</div></td><td>'+esc(c.client_code)+'</td><td>'+fmtNum(c.userCount)+'</td><td>'+fmtMoney(c.spend)+'</td><td>'+fmtNum(c.clicks)+'</td><td>'+fmtNum(c.leads)+'</td><td>'+esc(c.status)+'</td></tr>').join('')
       + '</tbody></table></div>' : '<div class="empty">No clients found.</div>')
     + '</div><div style="height:16px"></div>'
@@ -2080,7 +2080,7 @@ function dashboard(){
         <button class="btn" style="background:#fff;color:var(--purple)" onclick="go('Reports')">View Reports</button>
       </div>
       <div class="metric-row">
-        <div class="metric">Leads<b>${fmtNum(m.totalLeads)}</b></div>
+        <div class="metric">Campaign-reported leads<b>${fmtNum(m.totalLeads)}</b><small>Platform-reported total; not individual contacts</small></div>
         <div class="metric">CPL<b>${fmtMoney(m.cpl)}</b></div>
         <div class="metric">Conversion Rate<b>${fmtPct(m.conversionRate)}</b></div>
       </div>
@@ -2462,7 +2462,7 @@ async function loadLeadsPage(){
  box.innerHTML=rows.length?'<div style="overflow-x:auto"><table class="table"><thead><tr><th>Lead</th>'+(admin?'<th>Client</th>':'')+'<th>Date</th><th>Source</th><th>Campaign</th><th>Status</th></tr></thead><tbody>'+rows.map(x=>'<tr><td><b>'+esc(x.name||"—")+'</b><div class="muted">'+esc(x.email||x.phone||"")+'</div></td>'+(admin?'<td>'+esc(x.clients?.display_name||"—")+'</td>':'')+'<td>'+esc(x.created_at?new Date(x.created_at).toLocaleDateString("en-IN"):"—")+'</td><td>'+esc(x.source||"—")+'</td><td>'+esc(x.campaign||"—")+'</td><td>'+esc(x.status||"new")+'</td></tr>').join('')+'</tbody></table></div>':'<div class="empty">No matching leads found.</div>';
  }catch(e){box.innerHTML='<div class="error-message">'+esc(e.message)+'</div>';}
 }
-function leads(){setTimeout(loadLeadsPage,0);return title("Leads",state.user?.role==="admin"?"Individual lead records stored in the portal. Campaign-reported totals are shown separately.":"Your individual business leads.")+'<div class="card"><input id="lead-search" placeholder="Search leads'+(state.user?.role==="admin"?' or client':'')+'" oninput="loadLeadsPage()" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:9px;margin-bottom:14px"><div class="tabs">'+["All Leads","New","Contacted","Converted"].map(s=>'<button class="'+(state.leadStatus===s?'active':'')+'" onclick="state.leadStatus=\''+s+'\';loadLeadsPage();render()">'+s+'</button>').join('')+'</div><div id="leads-live-table"></div></div>';}
+function leads(){setTimeout(loadLeadsPage,0);return title("Leads",state.user?.role==="admin"?"Individual lead records from connected lead sources. Campaign-reported totals are not individual contacts.":"Your individual business leads.")+'<div class="card"><input id="lead-search" placeholder="Search leads'+(state.user?.role==="admin"?' or client':'')+'" oninput="loadLeadsPage()" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:9px;margin-bottom:14px"><div class="tabs">'+["All Leads","New","Contacted","Converted"].map(s=>'<button class="'+(state.leadStatus===s?'active':'')+'" onclick="state.leadStatus=\''+s+'\';loadLeadsPage();render()">'+s+'</button>').join('')+'</div><div id="leads-live-table"></div></div>';}
 
 async function updateSocialPostStatus(id,status){
  try{
