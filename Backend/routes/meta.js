@@ -499,7 +499,7 @@ module.exports = (supabase, authenticateToken) => {
       if (readError) throw readError;
       if (!existing) return fail(res, 404, "No Meta connection exists for this client");
       const { error: updateError } = await supabase.from("meta_connections").update({
-        status: "disconnected", access_token: null, meta_user_id: null,
+        status: "disconnected", access_token: "", meta_user_id: null,
         ad_account_id: null, ad_account_name: null, currency: null,
         token_expires_at: null, last_sync_error: "Disconnected by an authorized user",
         updated_at: new Date().toISOString()
