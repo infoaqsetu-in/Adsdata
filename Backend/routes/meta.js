@@ -460,7 +460,7 @@ module.exports = (supabase, authenticateToken) => {
         }
         for (let i=0; i<rows.length; i+=100) {
           const batch = rows.slice(i,i+100);
-          const { error } = await supabase.from("social_posts").upsert(batch,{onConflict:"client_id,platform,platform_post_id"});
+          const { error } = await supabase.from("social_posts").upsert(batch,{onConflict:"client_id,platform,platform_post_id",ignoreDuplicates:false});
           if (error) throw error;
           synced += batch.length;
         }
