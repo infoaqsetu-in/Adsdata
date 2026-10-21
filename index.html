@@ -1623,6 +1623,7 @@ function go(page){
   state.page = page;
 
   render();
+  if(page === "Notifications") setTimeout(loadNotifications, 0);
 }
 
 
@@ -2693,7 +2694,6 @@ let notificationItems = [];
 let notificationLoadError = "";
 
 function notifications(){
-  setTimeout(loadNotifications, 0);
   const unread = notificationItems.filter(n => !n.is_read).length;
   const action = '<button class="btn btn-light" onclick="markAllNotificationsRead()">'+(unread ? 'Mark all as read' : 'All read')+'</button>';
   const content = notificationLoadError
