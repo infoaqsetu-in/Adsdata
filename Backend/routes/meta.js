@@ -487,6 +487,30 @@ module.exports = (supabase, authenticateToken) => {
     } catch (err) { await handleError(req, res, err, "meta-social-sync"); }
   });
 
+  // Disconnect one client's Meta connection without deleting historical campaign data.
+  // Admins may specify a client; regular users are restricted to their own client.
+  router.post("/disconnect", authenticateToken, async (req, res) => {
+    const requestedClientId = typeof req.body?.clientId === "string" ? req.body.clientId : "";
+    const clientId = req.user.role === "admin" ? requestedClientId : req.user.clientId;
+    if (!clientId) return fail(res, 400, req.user.role === "admin" ? "clientId is required" : "No client is associated with this account");
+    if (req.user.role !== "admin" && requestedClientId && requestedClientId !== req.user.clientId) return fail(res, 403, "You can only disconnect Meta for your own client");
+    try {
+      const { data: existing, error: readError } = await supabase.from("meta_connections").select("client_id,status").eq("client_id", clientId).maybeSingle();
+      if (readError) throw readError;
+      if (!existing) return fail(res, 404, "No Meta connection exists for this client");
+      const { error: updateError } = await supabase.from("meta_connections").update({
+        status: "disconnected", access_token: null, meta_user_id: null,
+        ad_account_id: null, ad_account_name: null, currency: null,
+        token_expires_at: null, last_sync_error: "Disconnected by an authorized user",
+        updated_at: new Date().toISOString()
+      }).eq("client_id", clientId);
+      if (updateError) throw updateError;
+      const { error: permissionsError } = await supabase.from("meta_account_permissions").delete().eq("client_id", clientId);
+      if (permissionsError) throw permissionsError;
+      res.json({ success: true, message: "Meta disconnected. Historical campaign and social-post data has been retained." });
+    } catch (err) { await handleError(req, res, err, "disconnect-meta"); }
+  });
+
   // ---------------- status / accounts ----------------
   router.get("/status", authenticateToken, async (req, res) => {
     try {
