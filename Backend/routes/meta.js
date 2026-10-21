@@ -386,7 +386,7 @@ module.exports = (supabase, authenticateToken) => {
     if (req.user.role !== "admin") return fail(res, 403, "Admin role required");
     const clientId = String(req.body?.clientId || "");
     const pageIds = req.body?.allowedPageIds;
-    if (!clientId || !Array.isArray(pageIds) || pageIds.some(id => typeof id !== "string" || !/^\\d+$/.test(id))) {
+    if (!clientId || !Array.isArray(pageIds) || pageIds.some(id => typeof id !== "string" || !/^\d+$/.test(id))) {
       return fail(res, 400, "clientId and valid allowedPageIds are required");
     }
     try {
