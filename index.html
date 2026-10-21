@@ -688,6 +688,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--purple);box-shadow:0 
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 
+.app-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:28px 0 0;padding:18px 2px 6px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+.app-footer nav{display:flex;gap:18px;flex-wrap:wrap}
+.app-footer a{color:var(--purple);text-decoration:none;font-weight:600}
+.app-footer a:hover{text-decoration:underline}
+@media(max-width:600px){.app-footer{align-items:flex-start;flex-direction:column}.app-footer nav{gap:14px}}
+
 </style>
 </head>
 
@@ -1650,6 +1656,14 @@ function layout(){
         <section class="content">
 
           ${pageContent()}
+
+          <footer class="app-footer" aria-label="Legal and privacy links">
+            <span>© ${new Date().getFullYear()} AQ Setu</span>
+            <nav aria-label="Legal links">
+              <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+              <a href="/data-deletion.html" target="_blank" rel="noopener noreferrer">Data Deletion</a>
+            </nav>
+          </footer>
 
         </section>
 
