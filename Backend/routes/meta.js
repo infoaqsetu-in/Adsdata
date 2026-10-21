@@ -220,7 +220,7 @@ module.exports = (supabase, authenticateToken) => {
       redirect_uri: process.env.META_REDIRECT_URI,
       response_type: "code",
       state,
-      scope: "ads_read,ads_management,business_management,pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,instagram_basic,instagram_manage_insights,instagram_content_publish",
+      scope: "ads_read,ads_management,business_management,pages_show_list,pages_read_engagement,instagram_basic,instagram_manage_insights,instagram_content_publish",
       auth_type: "rerequest"
     });
     res.json({ success: true, authUrl: `https://www.facebook.com/${process.env.META_API_VERSION || "v26.0"}/dialog/oauth?${params}` });
