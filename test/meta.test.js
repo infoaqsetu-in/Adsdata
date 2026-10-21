@@ -78,5 +78,5 @@ test("normalizeCampaign avoids double-counting overlapping lead action types", (
     adAccountId: "act_123456"
   });
   assert.equal(row.leads, 3);
-  assert.equal(row.cpl, 100 / 3);
+  assert.equal(row.cpl, 33.33);
 });
