@@ -2472,44 +2472,26 @@ async function updateSocialPostStatus(id,status){
 }
 async function syncSocialCalendarFromMeta(){
  const admin=state.user?.role==="admin";
- let clientId=null;
- if(admin){
-  try{
-   const d=await apiRequest("/api/admin/overview");
-   const clients=d.clients||[];
-   if(!clients.length){alert("No clients are available to sync.");return;}
-   const choices=clients.map((c,i)=>(i+1)+". "+c.display_name).join("\n");
-   const choice=prompt("Sync Instagram and Facebook posts for which client?\n"+choices,"1");
-   if(choice===null)return;
-   const idx=Number(choice)-1;
-   if(!Number.isInteger(idx)||idx<0||idx>=clients.length){alert("Invalid client selection.");return;}
-   clientId=clients[idx].id;
-  }catch(e){alert("Could not load clients: "+e.message);return;}
- }
+ const clientId=admin?document.getElementById("social-client-filter")?.value:"";
+ if(admin&&!clientId){alert("Select a client before syncing.");return;}
  const box=document.getElementById("social-calendar-live");
  const button=document.getElementById("social-meta-sync-button");
  if(button){button.disabled=true;button.textContent="Syncing Meta posts…";}
- if(box)box.insertAdjacentHTML("afterbegin",'<div id="social-meta-sync-note" class="muted" style="padding:8px 0">Fetching available Facebook and Instagram posts…</div>');
+ if(box)box.insertAdjacentHTML("afterbegin",'<div id="social-meta-sync-note" class="muted" style="padding:8px 0">Fetching posts for the selected client and its assigned Pages…</div>');
  try{
   const payload=admin?{clientId}:{};
   const d=await apiRequest("/api/meta/social/sync",{method:"POST",body:JSON.stringify(payload)});
   await loadSocialCalendar();
   const calendar=document.getElementById("social-calendar-live");
   if(calendar){
-   const note=document.createElement("div");
-   note.className="muted";
-   note.style.padding="8px 0";
-   note.textContent="Meta sync complete: "+(d.postsSynced||0)+" posts imported or updated across "+(d.pagesSynced||0)+" Pages.";
+   const note=document.createElement("div");note.className="muted";note.style.padding="8px 0";
+   note.textContent="Meta sync complete: "+(d.postsSynced||0)+" posts imported or updated across "+(d.pagesSynced||0)+" assigned Pages.";
    calendar.prepend(note);
   }
  }catch(e){
   const note=document.getElementById("social-meta-sync-note");
-  if(note)note.textContent="Meta sync could not complete: "+e.message;
-  else alert("Meta sync could not complete: "+e.message);
- }finally{
-  const current=document.getElementById("social-meta-sync-button");
-  if(current){current.disabled=false;current.textContent="↻ Sync Instagram & Facebook";}
- }
+  if(note)note.textContent="Meta sync could not complete: "+e.message;else alert(e.message);
+ }finally{const current=document.getElementById("social-meta-sync-button");if(current){current.disabled=false;current.textContent="↻ Sync Instagram & Facebook";}}
 }
 let socialCalendarMonthOffset=0;
 function shiftSocialCalendarMonth(delta){socialCalendarMonthOffset+=delta;loadSocialCalendar();}
@@ -2527,7 +2509,8 @@ async function loadSocialCalendar(){
  box.innerHTML='<div class="muted">Loading social posts…</div>';
  try{
   const admin=state.user?.role==="admin";
-  const d=await apiRequest(admin?"/api/admin/social-posts":"/api/social-posts");
+  const clientFilter=admin?document.getElementById("social-client-filter")?.value||"":"";
+  const d=await apiRequest(admin?"/api/admin/social-posts"+(clientFilter?"?clientId="+encodeURIComponent(clientFilter):""):"/api/social-posts");
   const filter=document.getElementById("social-status-filter")?.value||"all";
   const rows=(d.posts||[]).filter(p=>filter==="all"||p.status===filter);
   const now=new Date();
@@ -2570,7 +2553,7 @@ async function loadSocialCalendar(){
   box.innerHTML=html;
  }catch(e){box.innerHTML='<div class="error-message">'+esc(e.message)+'</div>';}
 }
-function social(){setTimeout(loadSocialCalendar,0);return title("Social Media",state.user?.role==="admin"?"Agency-wide calendar across all clients.":"Your past, scheduled and upcoming social posts.",'<button class="btn btn-primary" onclick="uploadContent()">+ Add Post</button>')+'<div class="card"><div class="section-head"><h3>Social Media Calendar</h3><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button id="social-meta-sync-button" class="btn btn-light" onclick="syncSocialCalendarFromMeta()">↻ Sync Instagram & Facebook</button><select id="social-status-filter" onchange="loadSocialCalendar()" style="padding:9px;border:1px solid var(--line);border-radius:8px"><option value="all">All statuses</option><option value="draft">Draft</option><option value="pending_approval">Pending approval</option><option value="approved">Approved</option><option value="scheduled">Scheduled</option><option value="published">Published</option><option value="failed">Failed</option><option value="rejected">Rejected</option></select></div></div><div class="muted" style="margin:0 0 12px">Sync to import accessible published posts and scheduled Facebook Page posts, plus available Instagram media.</div><div id="social-calendar-live"></div></div>';}
+function social(){setTimeout(async()=>{if(state.user?.role==="admin"){try{const d=await apiRequest("/api/admin/overview");const sel=document.getElementById("social-client-filter");if(sel){const current=sel.value;sel.innerHTML='<option value="">Select client…</option>'+(d.clients||[]).map(c=>'<option value="'+esc(c.id)+'">'+esc(c.display_name)+'</option>').join("");if(current&&(d.clients||[]).some(c=>c.id===current))sel.value=current;else if((d.clients||[]).length)sel.value=d.clients[0].id;}}catch(e){console.error("Unable to load client list",e);}loadSocialCalendar();},0);const admin=state.user?.role==="admin";return title("Social Media",admin?"Choose a client to view and sync only its assigned Pages.":"Your past, scheduled and upcoming social posts.",'<button class="btn btn-primary" onclick="uploadContent()">+ Add Post</button>')+'<div class="card"><div class="section-head"><h3>Social Media Calendar</h3><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+(admin?'<select id="social-client-filter" onchange="loadSocialCalendar()" style="padding:9px;border:1px solid var(--line);border-radius:8px;min-width:180px"><option value="">Loading clients…</option></select>':'')+'<button id="social-meta-sync-button" class="btn btn-light" onclick="syncSocialCalendarFromMeta()">↻ Sync Instagram & Facebook</button><select id="social-status-filter" onchange="loadSocialCalendar()" style="padding:9px;border:1px solid var(--line);border-radius:8px"><option value="all">All statuses</option><option value="draft">Draft</option><option value="pending_approval">Pending approval</option><option value="approved">Approved</option><option value="scheduled">Scheduled</option><option value="published">Published</option><option value="failed">Failed</option><option value="rejected">Rejected</option></select></div></div><div class="muted" style="margin:0 0 12px">Only posts for the selected client are shown. Meta sync imports posts from Pages assigned to that client.</div><div id="social-calendar-live"></div></div>';}
 
 async function loadApprovalItems(){
  const box=document.getElementById("approval-list");if(!box)return;
@@ -2602,7 +2585,7 @@ async function uploadContent(){
  (isAdmin?'<div class="field" style="margin-top:20px"><label for="aq-post-client">Client</label><select id="aq-post-client" required style="width:100%;padding:11px;border:1px solid var(--line);border-radius:8px">'+clients.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.display_name)+'</option>').join('')+'</select></div>':'')+
  '<div class="field" style="margin-top:18px"><label>Post to</label><div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px"><label><input type="checkbox" id="aq-post-facebook" checked> Facebook</label><label><input type="checkbox" id="aq-post-instagram" checked> Instagram</label></div><p class="muted" style="font-size:12px;margin-top:6px">A separate calendar entry will be created for each selected platform.</p></div>'+
  '<div class="field"><label for="aq-post-caption">Text / caption</label><textarea id="aq-post-caption" rows="5" placeholder="Write your post caption…" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--line);border-radius:8px;resize:vertical"></textarea></div>'+
- '<div class="field"><label for="aq-post-media">Media URL (optional)</label><input id="aq-post-media" type="url" placeholder="https://… image or video URL" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--line);border-radius:8px"></div>'+
+ '<div class="field"><label for="aq-post-file">Upload photo / video (optional)</label><input id="aq-post-file" type="file" accept="image/*,video/mp4,video/quicktime,video/webm" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:8px"><small class="muted">Images and videos up to 8 MB. Or paste a hosted media URL below.</small></div><div class="field"><label for="aq-post-media">Media URL (optional)</label><input id="aq-post-media" type="url" placeholder="https://… image or video URL" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--line);border-radius:8px"></div>'+
  '<div class="field"><label for="aq-post-url">Published post URL (optional)</label><input id="aq-post-url" type="url" placeholder="https://…" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--line);border-radius:8px"></div>'+
  '<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:22px"><button type="button" id="aq-post-cancel" class="btn btn-light">Cancel</button><button type="button" id="aq-post-save" class="btn btn-primary">Submit for approval</button></div></section>'+
  '<aside style="padding:24px;background:var(--soft,#f4f6fa);border-left:1px solid var(--line);min-width:0"><h3 style="margin-top:0">Schedule</h3><p class="muted">Choose a date and time like Meta Business Suite. Leave scheduling off to save this as pending approval.</p>'+
@@ -2613,12 +2596,12 @@ async function uploadContent(){
  const close=()=>overlay.remove();
  overlay.querySelector('#aq-post-close').onclick=close;overlay.querySelector('#aq-post-cancel').onclick=close;
  overlay.addEventListener('click',e=>{if(e.target===overlay)close();});
- const captionEl=overlay.querySelector('#aq-post-caption'),mediaEl=overlay.querySelector('#aq-post-media');
+ const captionEl=overlay.querySelector('#aq-post-caption'),mediaEl=overlay.querySelector('#aq-post-media'),fileEl=overlay.querySelector('#aq-post-file');
  captionEl.addEventListener('input',()=>overlay.querySelector('#aq-post-preview').textContent=captionEl.value||'Your caption preview will appear here.');
  mediaEl.addEventListener('input',()=>{const img=overlay.querySelector('#aq-post-preview-image');if(mediaEl.value){img.src=mediaEl.value;img.style.display='block';}else{img.removeAttribute('src');img.style.display='none';}});
  overlay.querySelector('#aq-post-schedule').addEventListener('change',e=>overlay.querySelector('#aq-post-schedule-fields').style.display=e.target.checked?'block':'none');
  overlay.querySelector('#aq-post-save').onclick=async()=>{
-  const caption=captionEl.value.trim(),mediaUrl=mediaEl.value.trim(),postUrl=overlay.querySelector('#aq-post-url').value.trim();
+  const caption=captionEl.value.trim(),postUrl=overlay.querySelector('#aq-post-url').value.trim();let mediaUrl=mediaEl.value.trim();
   const platforms=['facebook','instagram'].filter(p=>overlay.querySelector('#aq-post-'+p).checked);
   if(!caption){alert('Please enter a caption.');return;}
   if(!platforms.length){alert('Select Facebook, Instagram, or both.');return;}
@@ -2628,6 +2611,12 @@ async function uploadContent(){
   const clientId=isAdmin?overlay.querySelector('#aq-post-client').value:undefined;
   const button=overlay.querySelector('#aq-post-save');button.disabled=true;button.textContent='Saving…';
   try{
+   if(fileEl.files&&fileEl.files[0]){
+    const file=fileEl.files[0];if(file.size>8*1024*1024)throw new Error('Media file must be 8 MB or smaller.');
+    const allowedType=/^(image\/(jpeg|png|webp|gif)|video\/(mp4|quicktime|webm))$/.test(file.type);if(!allowedType)throw new Error('Choose a JPG, PNG, WEBP, GIF, MP4, MOV or WEBM file.');
+    const base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');reader.onerror=()=>reject(new Error('Could not read media file.'));reader.readAsDataURL(file);});
+    const uploaded=await apiRequest('/api/social-posts/upload-media',{method:'POST',body:JSON.stringify({clientId,fileName:file.name,mimeType:file.type,base64})});mediaUrl=uploaded.url;
+   }
    for(const platform of platforms)await apiRequest('/api/social-posts',{method:'POST',body:JSON.stringify({clientId,caption,platform,scheduledAt,mediaUrl:mediaUrl||null,postUrl:postUrl||null,status:'pending_approval'})});
    close();alert('Post saved for '+platforms.map(x=>x==='facebook'?'Facebook':'Instagram').join(' and ')+'. '+(schedule?'Scheduled date saved; approval is still required.':'Submitted for approval.'));await loadSocialCalendar();await loadApprovalItems();
   }catch(e){button.disabled=false;button.textContent='Submit for approval';alert(e.message);}
