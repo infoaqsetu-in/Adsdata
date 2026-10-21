@@ -1295,6 +1295,19 @@ async function loadMetaStatus(){
   }
 }
 
+async function disconnectMeta(clientId, clientName){
+  const target = clientId ? `the Meta connection for ${clientName || "this client"}` : "your Meta connection";
+  if(!confirm(`Disconnect ${target}? Campaign and social-post history will remain, but live Meta data will stop until reconnected.`)) return;
+  try{
+    const result = await apiRequest("/api/meta/disconnect", { method:"POST", body:JSON.stringify(clientId ? {clientId} : {}) });
+    state.meta.message = { type:"ok", text:result.message || "Meta disconnected." };
+    state.meta.accounts = null;
+    if(!clientId) await Promise.all([loadMetaStatus(), loadDashboard()]);
+    else { state.adminIntegrations = null; await loadAdminIntegrations(); }
+    render();
+  }catch(error){ state.meta.message = { type:"error", text:error.message }; render(); }
+}
+
 async function connectMeta(clientId){
   try{
     const connectUrl = "/api/meta/connect" + (clientId ? "?clientId=" + encodeURIComponent(clientId) : "");
@@ -2009,9 +2022,9 @@ function adminIntegrations(){
     + clients.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.display_name)+' ('+esc(c.client_code)+')</option>').join('')
     + '</select></div><p id="meta-permission-note" class="muted"></p><div id="meta-permission-accounts" style="max-width:650px"></div><div style="margin-top:16px"><button class="btn btn-primary" onclick="saveMetaPermissionAccounts()">Save Account Permissions</button></div></div>'
     + '<div class="card"><h3>Facebook & Instagram Organic Posts</h3><p class="muted">Choose a client, load Pages from the connected Meta account, then sync available published and scheduled posts.</p><div class="field"><label for="meta-social-client">Client</label><select id="meta-social-client" onchange="loadMetaSocialPages()" style="width:100%;max-width:560px;padding:12px;border:1px solid var(--line);border-radius:9px"><option value="">Select client…</option>' + clients.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.display_name)+'</option>').join('') + '</select></div><div id="meta-social-pages"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-light" onclick="saveMetaSocialPages()">Save Page Permissions</button><button class="btn btn-primary" onclick="syncMetaSocialPosts()">Sync Assigned Pages & Posts</button></div><p id="meta-social-result" class="muted"></p></div>'
-    + '<div class="card"><h3>Connection Status</h3><div style="overflow-x:auto"><table class="table"><thead><tr><th>Client</th><th>Meta account</th><th>Status</th><th>Last synced</th><th>Token expiry</th></tr></thead><tbody>'
-    + rows.map(r=>'<tr><td><b>'+esc(clients.find(c=>c.id===r.client_id)?.display_name||r.client_id)+'</b></td><td>'+esc(r.ad_account_name||r.ad_account_id||"—")+'</td><td>'+esc(r.status||"—")+'</td><td>'+esc(r.last_synced_at?new Date(r.last_synced_at).toLocaleString("en-IN"):"Never")+'</td><td>'+esc(r.token_expires_at?new Date(r.token_expires_at).toLocaleDateString("en-IN"):"—")+'</td></tr>').join('')
-    + (rows.length?"":"<tr><td colspan=\"5\" class=\"muted\">No Meta connections yet.</td></tr>")
+    + '<div class="card"><h3>Connection Status</h3><div style="overflow-x:auto"><table class="table"><thead><tr><th>Client</th><th>Meta account</th><th>Status</th><th>Last synced</th><th>Token expiry</th><th>Action</th></tr></thead><tbody>'
+    + rows.map(r=>'<tr><td><b>'+esc(clients.find(c=>c.id===r.client_id)?.display_name||r.client_id)+'</b></td><td>'+esc(r.ad_account_name||r.ad_account_id||"—")+'</td><td>'+esc(r.status||"—")+'</td><td>'+esc(r.last_synced_at?new Date(r.last_synced_at).toLocaleString("en-IN"):"Never")+'</td><td>'+esc(r.token_expires_at?new Date(r.token_expires_at).toLocaleDateString("en-IN"):"—")+'</td><td>'+(r.status==="active"||r.status==="expired"?'<button class="btn btn-light" onclick="disconnectMeta('+JSON.stringify(r.client_id)+','+JSON.stringify(clients.find(c=>c.id===r.client_id)?.display_name||r.client_id)+')">Disconnect</button>':'<span class="muted">—</span>')+'</td></tr>').join('')
+    + (rows.length?"":"<tr><td colspan=\"6\" class=\"muted\">No Meta connections yet.</td></tr>")
     + '</tbody></table></div></div>';
 }
 
@@ -2219,6 +2232,7 @@ function metaConnectionBar(){
         <button class="btn btn-primary" ${state.meta.syncing || !conn.ad_account_id ? "disabled" : ""} onclick="syncMeta()">
           ${state.meta.syncing ? "Syncing…" : "Sync now"}
         </button>
+        <button class="btn btn-light" onclick="disconnectMeta()" title="Disconnect this client's Meta connection">Disconnect Meta</button>
       </span>`;
   }
 
